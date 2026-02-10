@@ -313,6 +313,10 @@ class ProviderOpenAIOfficial(Provider):
             llm_response.tools_call_name = func_name_ls
             llm_response.tools_call_ids = tool_call_ids
             llm_response.tools_call_extra_content = tool_call_extra_content_dict
+            # If tool calls are present, drop assistant text to avoid premature replies.
+            if llm_response.result_chain or llm_response.completion_text:
+                llm_response.result_chain = None
+                llm_response.completion_text = ""
         # specially handle finish reason
         if choice.finish_reason == "content_filter":
             raise Exception(
