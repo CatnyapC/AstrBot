@@ -499,13 +499,9 @@ async def _process_quote_message(
                 image_seg = comp
                 break
 
-    if image_seg:
+    if image_seg and img_cap_prov_id:
         try:
-            prov = None
-            if img_cap_prov_id:
-                prov = plugin_context.get_provider_by_id(img_cap_prov_id)
-            if prov is None:
-                prov = plugin_context.get_using_provider(event.unified_msg_origin)
+            prov = plugin_context.get_provider_by_id(img_cap_prov_id)
 
             if prov and isinstance(prov, Provider):
                 llm_resp = await prov.text_chat(
