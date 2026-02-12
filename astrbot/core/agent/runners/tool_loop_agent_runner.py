@@ -1,4 +1,5 @@
 import copy
+import json
 import sys
 import time
 import traceback
@@ -125,6 +126,10 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self.tool_executor = tool_executor
         self.agent_hooks = agent_hooks
         self.run_context = run_context
+        self._force_followup_after_alias = False
+        self._forced_alias_followup_text = None
+        self._forced_tool_subset_names: list[str] | None = None
+        self._resolved_alias_queue: list[str] = []
 
         # These two are used for tool schema mode handling
         # We now have two modes:
@@ -168,6 +173,16 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
 
     async def _iter_llm_responses(self) -> T.AsyncGenerator[LLMResponse, None]:
         """Yields chunks *and* a final LLMResponse."""
+        # Drop invalid assistant messages with empty tool_calls to avoid provider errors.
+        if self.run_context.messages:
+            self.run_context.messages = [
+                m
+                for m in self.run_context.messages
+                if not (
+                    getattr(m, "role", None) == "assistant"
+                    and getattr(m, "tool_calls", None) == []
+                )
+            ]
         payload = {
             "contexts": self.run_context.messages,  # list[Message]
             "func_tool": self.req.func_tool,
@@ -207,42 +222,53 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
             self.run_context.messages, trusted_token_usage=token_usage
         )
 
-        async for llm_response in self._iter_llm_responses():
-            if llm_response.is_chunk:
-                # update ttft
-                if self.stats.time_to_first_token == 0:
-                    self.stats.time_to_first_token = time.time() - self.stats.start_time
+        restore_tool_set = None
+        if self._forced_tool_subset_names and self.req.func_tool:
+            restore_tool_set = self.req.func_tool
+            self.req.func_tool = self._build_tool_subset(
+                restore_tool_set, self._forced_tool_subset_names
+            )
+        try:
+            async for llm_response in self._iter_llm_responses():
+                if llm_response.is_chunk:
+                    # update ttft
+                    if self.stats.time_to_first_token == 0:
+                        self.stats.time_to_first_token = time.time() - self.stats.start_time
 
-                if llm_response.result_chain:
-                    yield AgentResponse(
-                        type="streaming_delta",
-                        data=AgentResponseData(chain=llm_response.result_chain),
-                    )
-                elif llm_response.completion_text:
-                    yield AgentResponse(
-                        type="streaming_delta",
-                        data=AgentResponseData(
-                            chain=MessageChain().message(llm_response.completion_text),
-                        ),
-                    )
-                elif llm_response.reasoning_content:
-                    yield AgentResponse(
-                        type="streaming_delta",
-                        data=AgentResponseData(
-                            chain=MessageChain(type="reasoning").message(
-                                llm_response.reasoning_content,
+                    if llm_response.result_chain:
+                        yield AgentResponse(
+                            type="streaming_delta",
+                            data=AgentResponseData(chain=llm_response.result_chain),
+                        )
+                    elif llm_response.completion_text:
+                        yield AgentResponse(
+                            type="streaming_delta",
+                            data=AgentResponseData(
+                                chain=MessageChain().message(llm_response.completion_text),
                             ),
-                        ),
-                    )
-                continue
-            llm_resp_result = llm_response
+                        )
+                    elif llm_response.reasoning_content:
+                        yield AgentResponse(
+                            type="streaming_delta",
+                            data=AgentResponseData(
+                                chain=MessageChain(type="reasoning").message(
+                                    llm_response.reasoning_content,
+                                ),
+                            ),
+                        )
+                    continue
+                llm_resp_result = llm_response
 
-            if not llm_response.is_chunk and llm_response.usage:
-                # only count the token usage of the final response for computation purpose
-                self.stats.token_usage += llm_response.usage
-                if self.req.conversation:
-                    self.req.conversation.token_usage = llm_response.usage.total
-            break  # got final response
+                if not llm_response.is_chunk and llm_response.usage:
+                    # only count the token usage of the final response for computation purpose
+                    self.stats.token_usage += llm_response.usage
+                    if self.req.conversation:
+                        self.req.conversation.token_usage = llm_response.usage.total
+                break  # got final response
+        finally:
+            if restore_tool_set is not None:
+                self.req.func_tool = restore_tool_set
+            self._forced_tool_subset_names = None
 
         if not llm_resp_result:
             return
@@ -349,9 +375,12 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 parts.append(TextPart(text=llm_resp.completion_text))
             if len(parts) == 0:
                 parts = None
+            tool_calls = llm_resp.to_openai_to_calls_model()
+            if not tool_calls:
+                return
             tool_calls_result = ToolCallsResult(
                 tool_calls_info=AssistantMessageSegment(
-                    tool_calls=llm_resp.to_openai_to_calls_model(),
+                    tool_calls=tool_calls,
                     content=parts,
                 ),
                 tool_calls_result=tool_call_result_blocks,
@@ -397,6 +426,12 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                         )
 
             self.req.append_tool_calls_result(tool_calls_result)
+            if self._force_followup_after_alias and self._forced_alias_followup_text:
+                self.run_context.messages.append(
+                    Message(role="user", content=self._forced_alias_followup_text)
+                )
+                self._force_followup_after_alias = False
+                self._forced_alias_followup_text = None
 
     async def step_until_done(
         self, max_step: int
@@ -511,6 +546,18 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 else:
                     # 如果没有 handler（如 MCP 工具），使用所有参数
                     valid_params = func_tool_args
+
+                if (
+                    func_tool_name == "get_impression_profile"
+                    and self._resolved_alias_queue
+                ):
+                    forced_target = self._resolved_alias_queue.pop(0)
+                    valid_params = dict(valid_params)
+                    valid_params["target"] = forced_target
+                    logger.info(
+                        "get_impression_profile forced target from resolve_alias: %s",
+                        forced_target,
+                    )
 
                 try:
                     await self.agent_hooks.on_tool_start(
@@ -677,6 +724,31 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 )
             )
             logger.info(f"Tool `{func_tool_name}` Result: {last_tcr_content}")
+            if func_tool_name == "resolve_alias":
+                try:
+                    data = json.loads(last_tcr_content)
+                except Exception:  # noqa: BLE001
+                    data = None
+                if isinstance(data, dict) and data.get("status") == "ok":
+                    resolved = data.get("message") or data.get("candidates") or ""
+                    resolved = str(resolved).strip()
+                    if "," in resolved:
+                        resolved = resolved.split(",", 1)[0].strip()
+                    if resolved:
+                        self._resolved_alias_queue.append(resolved)
+                    hint = (
+                        "resolve_alias 已成功返回。现在必须继续用这个结果回答用户问题，"
+                        "不要回到闲聊。如需印象信息，请继续调用 get_impression_profile。"
+                    )
+                    if resolved:
+                        hint = (
+                            f"resolve_alias 已成功返回（user_id={resolved}）。"
+                            "现在必须继续用这个结果回答用户问题，"
+                            "不要回到闲聊。如需印象信息，请继续调用 get_impression_profile。"
+                        )
+                    self._forced_alias_followup_text = hint
+                    self._force_followup_after_alias = True
+                    self._forced_tool_subset_names = ["get_impression_profile"]
 
         # 处理函数调用响应
         if tool_call_result_blocks:
