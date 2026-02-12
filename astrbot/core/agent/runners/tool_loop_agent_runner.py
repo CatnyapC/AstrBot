@@ -1,4 +1,6 @@
 import copy
+import json
+import re
 import sys
 import time
 import traceback
@@ -69,6 +71,37 @@ class _HandleFunctionToolsResult:
 
 
 class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
+    _FORCED_TOOL_SYS_MARKER = "[AIC_FORCE_FINAL]"
+
+    @staticmethod
+    def _contains_tool_markup(text: str) -> bool:
+        if not text:
+            return False
+        lowered = text.lower()
+        markers = (
+            "<call",
+            "</call>",
+            "<tool_name>",
+            "</tool_name>",
+            "tool_call",
+            "tool_name",
+        )
+        return any(m in lowered for m in markers)
+
+    @staticmethod
+    def _extract_required_phrases(tool_text: str, max_items: int = 2) -> list[str]:
+        if not tool_text:
+            return []
+        impressions_line = ""
+        for line in tool_text.splitlines():
+            if line.lower().startswith("impressions:"):
+                impressions_line = line.split(":", 1)[-1]
+                break
+        if not impressions_line:
+            return []
+        parts = [p.strip() for p in re.split(r"[;；]", impressions_line) if p.strip()]
+        return parts[:max_items]
+
     @override
     async def reset(
         self,
@@ -125,6 +158,11 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self.tool_executor = tool_executor
         self.agent_hooks = agent_hooks
         self.run_context = run_context
+        self._force_final_after_tool = False
+        self._forced_tool_result_text = None
+        self._tool_markup_retry_count = 0
+        self._forced_tool_expected_keyword = None
+        self._forced_tool_required_phrases: list[str] = []
 
         # These two are used for tool schema mode handling
         # We now have two modes:
@@ -168,6 +206,16 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
 
     async def _iter_llm_responses(self) -> T.AsyncGenerator[LLMResponse, None]:
         """Yields chunks *and* a final LLMResponse."""
+        # Drop invalid assistant messages with empty tool_calls to avoid provider errors.
+        if self.run_context.messages:
+            self.run_context.messages = [
+                m
+                for m in self.run_context.messages
+                if not (
+                    getattr(m, "role", None) == "assistant"
+                    and getattr(m, "tool_calls", None) == []
+                )
+            ]
         payload = {
             "contexts": self.run_context.messages,  # list[Message]
             "func_tool": self.req.func_tool,
@@ -295,11 +343,71 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
 
         # 返回 LLM 结果
         if llm_resp.result_chain:
+            if self._force_final_after_tool and self._tool_markup_retry_count < 1:
+                plain = llm_resp.result_chain.get_plain_text(
+                    with_other_comps_mark=True
+                )
+                has_required = True
+                if self._forced_tool_required_phrases:
+                    has_required = any(
+                        phrase in plain for phrase in self._forced_tool_required_phrases
+                    )
+                if (
+                    self._contains_tool_markup(plain)
+                    or (
+                        self._forced_tool_expected_keyword
+                        and self._forced_tool_expected_keyword not in plain
+                    )
+                    or not has_required
+                ):
+                    if self._forced_tool_result_text:
+                        self.run_context.messages.append(
+                            Message(
+                                role="user",
+                                content=(
+                                    "你的上条回复未严格基于工具结果或包含工具标记，请改为纯自然语言回复。"
+                                    "请至少包含一条印象条目。不要输出任何 <call> 或工具调用格式。"
+                                    "以下是工具结果：\n"
+                                    f"{self._forced_tool_result_text}"
+                                ),
+                            )
+                        )
+                    self._tool_markup_retry_count += 1
+                    return
             yield AgentResponse(
                 type="llm_result",
                 data=AgentResponseData(chain=llm_resp.result_chain),
             )
         elif llm_resp.completion_text:
+            if self._force_final_after_tool and self._tool_markup_retry_count < 1:
+                plain = llm_resp.completion_text
+                has_required = True
+                if self._forced_tool_required_phrases:
+                    has_required = any(
+                        phrase in plain for phrase in self._forced_tool_required_phrases
+                    )
+                if (
+                    self._contains_tool_markup(plain)
+                    or (
+                        self._forced_tool_expected_keyword
+                        and self._forced_tool_expected_keyword not in plain
+                    )
+                    or not has_required
+                ):
+                    if self._forced_tool_result_text:
+                        self.run_context.messages.append(
+                            Message(
+                                role="user",
+                                content=(
+                                    "你的上条回复未严格基于工具结果或包含工具标记，请改为纯自然语言回复。"
+                                    "请至少包含一条印象条目。不要输出任何 <call> 或工具调用格式。"
+                                    "以下是工具结果：\n"
+                                    f"{self._forced_tool_result_text}"
+                                ),
+                            )
+                        )
+                    self._tool_markup_retry_count += 1
+                    return
             yield AgentResponse(
                 type="llm_result",
                 data=AgentResponseData(
@@ -349,9 +457,12 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 parts.append(TextPart(text=llm_resp.completion_text))
             if len(parts) == 0:
                 parts = None
+            tool_calls = llm_resp.to_openai_to_calls_model()
+            if not tool_calls:
+                return
             tool_calls_result = ToolCallsResult(
                 tool_calls_info=AssistantMessageSegment(
-                    tool_calls=llm_resp.to_openai_to_calls_model(),
+                    tool_calls=tool_calls,
                     content=parts,
                 ),
                 tool_calls_result=tool_call_result_blocks,
@@ -397,6 +508,44 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                         )
 
             self.req.append_tool_calls_result(tool_calls_result)
+            if self._force_final_after_tool:
+                if self.req:
+                    self.req.func_tool = None
+                if self._forced_tool_result_text:
+                    self.run_context.messages = [
+                        m
+                        for m in self.run_context.messages
+                        if not (
+                            getattr(m, "role", None) == "system"
+                            and self._FORCED_TOOL_SYS_MARKER
+                            in (getattr(m, "content", "") or "")
+                        )
+                    ]
+                    sys_msg = Message(
+                        role="system",
+                        content=(
+                            f"{self._FORCED_TOOL_SYS_MARKER}\n"
+                            "对象已确认，无需再确认或提问。请严格基于工具结果回复用户，不要再调用工具。"
+                            "必须包含至少一条印象条目，禁止输出任何工具调用标记。\n"
+                            "工具结果如下：\n"
+                            f"{self._forced_tool_result_text}"
+                        ),
+                    )
+                    sys_msg._no_save = True
+                    self.run_context.messages.insert(0, sys_msg)
+                self.run_context.messages.append(
+                    Message(
+                        role="user",
+                        content=(
+                            "工具已成功返回，请基于工具结果直接回复用户，不要再调用工具。"
+                            "禁止输出任何工具调用标记。"
+                        ),
+                    )
+                )
+                self._force_final_after_tool = False
+                self._forced_tool_result_text = None
+                self._forced_tool_expected_keyword = None
+                self._forced_tool_required_phrases = []
 
     async def step_until_done(
         self, max_step: int
@@ -677,6 +826,26 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 )
             )
             logger.info(f"Tool `{func_tool_name}` Result: {last_tcr_content}")
+            if func_tool_name == "get_impression_profile":
+                try:
+                    data = json.loads(last_tcr_content)
+                except Exception:  # noqa: BLE001
+                    data = None
+                if isinstance(data, dict) and data.get("status") == "ok":
+                    content = data.get("content")
+                    nickname = data.get("nickname") or ""
+                    if isinstance(content, str) and content.strip():
+                        title = (
+                            f"{nickname} 的印象档案如下："
+                            if nickname
+                            else "该群友的印象档案如下："
+                        )
+                        self._forced_tool_result_text = f"{title}\n{content.strip()}"
+                        self._forced_tool_expected_keyword = nickname or "印象"
+                        self._forced_tool_required_phrases = (
+                            self._extract_required_phrases(content.strip())
+                        )
+                    self._force_final_after_tool = True
 
         # 处理函数调用响应
         if tool_call_result_blocks:
