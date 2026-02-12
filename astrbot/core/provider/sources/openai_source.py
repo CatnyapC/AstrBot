@@ -442,7 +442,11 @@ class ProviderOpenAIOfficial(Provider):
                 context_query,
                 func_tool,
             )
-        if "The model is not a VLM" in str(e):  # siliconcloud
+        if (
+            "The model is not a VLM" in str(e)  # siliconcloud
+            or "unknown variant `image_url`" in str(e)
+            or "expected `text`" in str(e)
+        ):
             # 尝试删除所有 image
             new_contexts = await self._remove_image_from_context(context_query)
             payloads["messages"] = new_contexts

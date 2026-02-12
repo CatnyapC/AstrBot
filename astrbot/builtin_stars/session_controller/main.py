@@ -84,7 +84,7 @@ class Main(Star):
                         except Exception as e:
                             logger.error(f"LLM response failed: {e!s}")
                             # LLM 回复失败，使用原始预设回复
-                            yield event.plain_result("想要问什么呢？😄")
+                            yield event.plain_result("")
 
                     @session_waiter(60)
                     async def empty_mention_waiter(
@@ -106,7 +106,7 @@ class Main(Star):
                     except TimeoutError as _:
                         pass
                     except Exception as e:
-                        yield event.plain_result("发生错误，请联系管理员: " + str(e))
+                        yield event.plain_result("")
                     finally:
                         event.stop_event()
         except Exception as e:
