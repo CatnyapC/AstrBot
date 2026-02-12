@@ -1,6 +1,4 @@
 import copy
-import json
-import re
 import sys
 import time
 import traceback
@@ -71,37 +69,6 @@ class _HandleFunctionToolsResult:
 
 
 class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
-    _FORCED_TOOL_SYS_MARKER = "[AIC_FORCE_FINAL]"
-
-    @staticmethod
-    def _contains_tool_markup(text: str) -> bool:
-        if not text:
-            return False
-        lowered = text.lower()
-        markers = (
-            "<call",
-            "</call>",
-            "<tool_name>",
-            "</tool_name>",
-            "tool_call",
-            "tool_name",
-        )
-        return any(m in lowered for m in markers)
-
-    @staticmethod
-    def _extract_required_phrases(tool_text: str, max_items: int = 2) -> list[str]:
-        if not tool_text:
-            return []
-        impressions_line = ""
-        for line in tool_text.splitlines():
-            if line.lower().startswith("impressions:"):
-                impressions_line = line.split(":", 1)[-1]
-                break
-        if not impressions_line:
-            return []
-        parts = [p.strip() for p in re.split(r"[;；]", impressions_line) if p.strip()]
-        return parts[:max_items]
-
     @override
     async def reset(
         self,
@@ -158,15 +125,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self.tool_executor = tool_executor
         self.agent_hooks = agent_hooks
         self.run_context = run_context
-        self._force_final_after_tool = False
-        self._forced_tool_result_text = None
-        self._tool_markup_retry_count = 0
-        self._forced_tool_expected_keyword = None
-        self._forced_tool_required_phrases: list[str] = []
-        self._force_followup_after_alias = False
-        self._forced_alias_followup_text = None
-        self._forced_tool_subset_names: list[str] | None = None
-        self._resolved_alias_queue: list[str] = []
 
         # These two are used for tool schema mode handling
         # We now have two modes:
@@ -210,16 +168,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
 
     async def _iter_llm_responses(self) -> T.AsyncGenerator[LLMResponse, None]:
         """Yields chunks *and* a final LLMResponse."""
-        # Drop invalid assistant messages with empty tool_calls to avoid provider errors.
-        if self.run_context.messages:
-            self.run_context.messages = [
-                m
-                for m in self.run_context.messages
-                if not (
-                    getattr(m, "role", None) == "assistant"
-                    and getattr(m, "tool_calls", None) == []
-                )
-            ]
         payload = {
             "contexts": self.run_context.messages,  # list[Message]
             "func_tool": self.req.func_tool,
@@ -259,53 +207,42 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
             self.run_context.messages, trusted_token_usage=token_usage
         )
 
-        restore_tool_set = None
-        if self._forced_tool_subset_names and self.req.func_tool:
-            restore_tool_set = self.req.func_tool
-            self.req.func_tool = self._build_tool_subset(
-                restore_tool_set, self._forced_tool_subset_names
-            )
-        try:
-            async for llm_response in self._iter_llm_responses():
-                if llm_response.is_chunk:
-                    # update ttft
-                    if self.stats.time_to_first_token == 0:
-                        self.stats.time_to_first_token = time.time() - self.stats.start_time
+        async for llm_response in self._iter_llm_responses():
+            if llm_response.is_chunk:
+                # update ttft
+                if self.stats.time_to_first_token == 0:
+                    self.stats.time_to_first_token = time.time() - self.stats.start_time
 
-                    if llm_response.result_chain:
-                        yield AgentResponse(
-                            type="streaming_delta",
-                            data=AgentResponseData(chain=llm_response.result_chain),
-                        )
-                    elif llm_response.completion_text:
-                        yield AgentResponse(
-                            type="streaming_delta",
-                            data=AgentResponseData(
-                                chain=MessageChain().message(llm_response.completion_text),
+                if llm_response.result_chain:
+                    yield AgentResponse(
+                        type="streaming_delta",
+                        data=AgentResponseData(chain=llm_response.result_chain),
+                    )
+                elif llm_response.completion_text:
+                    yield AgentResponse(
+                        type="streaming_delta",
+                        data=AgentResponseData(
+                            chain=MessageChain().message(llm_response.completion_text),
+                        ),
+                    )
+                elif llm_response.reasoning_content:
+                    yield AgentResponse(
+                        type="streaming_delta",
+                        data=AgentResponseData(
+                            chain=MessageChain(type="reasoning").message(
+                                llm_response.reasoning_content,
                             ),
-                        )
-                    elif llm_response.reasoning_content:
-                        yield AgentResponse(
-                            type="streaming_delta",
-                            data=AgentResponseData(
-                                chain=MessageChain(type="reasoning").message(
-                                    llm_response.reasoning_content,
-                                ),
-                            ),
-                        )
-                    continue
-                llm_resp_result = llm_response
+                        ),
+                    )
+                continue
+            llm_resp_result = llm_response
 
-                if not llm_response.is_chunk and llm_response.usage:
-                    # only count the token usage of the final response for computation purpose
-                    self.stats.token_usage += llm_response.usage
-                    if self.req.conversation:
-                        self.req.conversation.token_usage = llm_response.usage.total
-                break  # got final response
-        finally:
-            if restore_tool_set is not None:
-                self.req.func_tool = restore_tool_set
-            self._forced_tool_subset_names = None
+            if not llm_response.is_chunk and llm_response.usage:
+                # only count the token usage of the final response for computation purpose
+                self.stats.token_usage += llm_response.usage
+                if self.req.conversation:
+                    self.req.conversation.token_usage = llm_response.usage.total
+            break  # got final response
 
         if not llm_resp_result:
             return
@@ -358,71 +295,11 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
 
         # 返回 LLM 结果
         if llm_resp.result_chain:
-            if self._force_final_after_tool and self._tool_markup_retry_count < 1:
-                plain = llm_resp.result_chain.get_plain_text(
-                    with_other_comps_mark=True
-                )
-                has_required = True
-                if self._forced_tool_required_phrases:
-                    has_required = any(
-                        phrase in plain for phrase in self._forced_tool_required_phrases
-                    )
-                if (
-                    self._contains_tool_markup(plain)
-                    or (
-                        self._forced_tool_expected_keyword
-                        and self._forced_tool_expected_keyword not in plain
-                    )
-                    or not has_required
-                ):
-                    if self._forced_tool_result_text:
-                        self.run_context.messages.append(
-                            Message(
-                                role="user",
-                                content=(
-                                    "你的上条回复未严格基于工具结果或包含工具标记，请改为纯自然语言回复。"
-                                    "请至少包含一条印象条目。不要输出任何 <call> 或工具调用格式。"
-                                    "以下是工具结果：\n"
-                                    f"{self._forced_tool_result_text}"
-                                ),
-                            )
-                        )
-                    self._tool_markup_retry_count += 1
-                    return
             yield AgentResponse(
                 type="llm_result",
                 data=AgentResponseData(chain=llm_resp.result_chain),
             )
         elif llm_resp.completion_text:
-            if self._force_final_after_tool and self._tool_markup_retry_count < 1:
-                plain = llm_resp.completion_text
-                has_required = True
-                if self._forced_tool_required_phrases:
-                    has_required = any(
-                        phrase in plain for phrase in self._forced_tool_required_phrases
-                    )
-                if (
-                    self._contains_tool_markup(plain)
-                    or (
-                        self._forced_tool_expected_keyword
-                        and self._forced_tool_expected_keyword not in plain
-                    )
-                    or not has_required
-                ):
-                    if self._forced_tool_result_text:
-                        self.run_context.messages.append(
-                            Message(
-                                role="user",
-                                content=(
-                                    "你的上条回复未严格基于工具结果或包含工具标记，请改为纯自然语言回复。"
-                                    "请至少包含一条印象条目。不要输出任何 <call> 或工具调用格式。"
-                                    "以下是工具结果：\n"
-                                    f"{self._forced_tool_result_text}"
-                                ),
-                            )
-                        )
-                    self._tool_markup_retry_count += 1
-                    return
             yield AgentResponse(
                 type="llm_result",
                 data=AgentResponseData(
@@ -472,12 +349,9 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 parts.append(TextPart(text=llm_resp.completion_text))
             if len(parts) == 0:
                 parts = None
-            tool_calls = llm_resp.to_openai_to_calls_model()
-            if not tool_calls:
-                return
             tool_calls_result = ToolCallsResult(
                 tool_calls_info=AssistantMessageSegment(
-                    tool_calls=tool_calls,
+                    tool_calls=llm_resp.to_openai_to_calls_model(),
                     content=parts,
                 ),
                 tool_calls_result=tool_call_result_blocks,
@@ -523,51 +397,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                         )
 
             self.req.append_tool_calls_result(tool_calls_result)
-            if self._force_final_after_tool:
-                if self.req:
-                    self.req.func_tool = None
-                if self._forced_tool_result_text:
-                    self.run_context.messages = [
-                        m
-                        for m in self.run_context.messages
-                        if not (
-                            getattr(m, "role", None) == "system"
-                            and self._FORCED_TOOL_SYS_MARKER
-                            in (getattr(m, "content", "") or "")
-                        )
-                    ]
-                    sys_msg = Message(
-                        role="system",
-                        content=(
-                            f"{self._FORCED_TOOL_SYS_MARKER}\n"
-                            "对象已确认，无需再确认或提问。请严格基于工具结果回复用户，不要再调用工具。"
-                            "必须包含至少一条印象条目，禁止输出任何工具调用标记。"
-                            "只使用与用户问题关键词匹配的印象条目，避免输出无关信息。\n"
-                            "工具结果如下：\n"
-                            f"{self._forced_tool_result_text}"
-                        ),
-                    )
-                    sys_msg._no_save = True
-                    self.run_context.messages.insert(0, sys_msg)
-                self.run_context.messages.append(
-                    Message(
-                        role="user",
-                        content=(
-                            "工具已成功返回，请基于工具结果直接回复用户，不要再调用工具。"
-                            "禁止输出任何工具调用标记。"
-                        ),
-                    )
-                )
-                self._force_final_after_tool = False
-                self._forced_tool_result_text = None
-                self._forced_tool_expected_keyword = None
-                self._forced_tool_required_phrases = []
-            if self._force_followup_after_alias and self._forced_alias_followup_text:
-                self.run_context.messages.append(
-                    Message(role="user", content=self._forced_alias_followup_text)
-                )
-                self._force_followup_after_alias = False
-                self._forced_alias_followup_text = None
 
     async def step_until_done(
         self, max_step: int
@@ -682,18 +511,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 else:
                     # 如果没有 handler（如 MCP 工具），使用所有参数
                     valid_params = func_tool_args
-
-                if (
-                    func_tool_name == "get_impression_profile"
-                    and self._resolved_alias_queue
-                ):
-                    forced_target = self._resolved_alias_queue.pop(0)
-                    valid_params = dict(valid_params)
-                    valid_params["target"] = forced_target
-                    logger.info(
-                        "get_impression_profile forced target from resolve_alias: %s",
-                        forced_target,
-                    )
 
                 try:
                     await self.agent_hooks.on_tool_start(
@@ -860,66 +677,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 )
             )
             logger.info(f"Tool `{func_tool_name}` Result: {last_tcr_content}")
-            if func_tool_name == "get_impression_profile":
-                try:
-                    data = json.loads(last_tcr_content)
-                except Exception:  # noqa: BLE001
-                    data = None
-                if isinstance(data, dict) and data.get("status") == "ok":
-                    content = data.get("content")
-                    nickname = data.get("nickname") or ""
-                    aliases_by_speaker = data.get("aliases_by_speaker") or {}
-                    alias_hint = ""
-                    if isinstance(aliases_by_speaker, dict):
-                        for alias_list in aliases_by_speaker.values():
-                            if isinstance(alias_list, list) and alias_list:
-                                alias_hint = str(alias_list[0]).strip()
-                                if alias_hint:
-                                    break
-                    if isinstance(content, str) and content.strip():
-                        title = (
-                            f"{nickname} 的印象档案如下："
-                            if nickname
-                            else "该群友的印象档案如下："
-                        )
-                        self._forced_tool_result_text = f"{title}\n{content.strip()}"
-                        expected_keyword = nickname or "印象"
-                        if nickname and nickname.isdigit() and alias_hint:
-                            expected_keyword = alias_hint
-                        self._forced_tool_expected_keyword = expected_keyword
-                        self._forced_tool_required_phrases = (
-                            self._extract_required_phrases(content.strip())
-                        )
-                        if alias_hint and self._forced_tool_result_text:
-                            self._forced_tool_result_text = (
-                                f"{self._forced_tool_result_text}\n别称提示：{alias_hint}"
-                            )
-                    self._force_final_after_tool = True
-            elif func_tool_name == "resolve_alias":
-                try:
-                    data = json.loads(last_tcr_content)
-                except Exception:  # noqa: BLE001
-                    data = None
-                if isinstance(data, dict) and data.get("status") == "ok":
-                    resolved = data.get("message") or data.get("candidates") or ""
-                    resolved = str(resolved).strip()
-                    if "," in resolved:
-                        resolved = resolved.split(",", 1)[0].strip()
-                    if resolved:
-                        self._resolved_alias_queue.append(resolved)
-                    hint = (
-                        "resolve_alias 已成功返回。现在必须继续用这个结果回答用户问题，"
-                        "不要回到闲聊。如需印象信息，请继续调用 get_impression_profile。"
-                    )
-                    if resolved:
-                        hint = (
-                            f"resolve_alias 已成功返回（user_id={resolved}）。"
-                            "现在必须继续用这个结果回答用户问题，"
-                            "不要回到闲聊。如需印象信息，请继续调用 get_impression_profile。"
-                        )
-                    self._forced_alias_followup_text = hint
-                    self._force_followup_after_alias = True
-                    self._forced_tool_subset_names = ["get_impression_profile"]
 
         # 处理函数调用响应
         if tool_call_result_blocks:
