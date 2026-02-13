@@ -130,6 +130,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self._forced_alias_followup_text = None
         self._forced_tool_subset_names: list[str] | None = None
         self._resolved_alias_queue: list[str] = []
+        self._skill_read_followup_budget = 1
 
         # These two are used for tool schema mode handling
         # We now have two modes:
@@ -233,7 +234,9 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 if llm_response.is_chunk:
                     # update ttft
                     if self.stats.time_to_first_token == 0:
-                        self.stats.time_to_first_token = time.time() - self.stats.start_time
+                        self.stats.time_to_first_token = (
+                            time.time() - self.stats.start_time
+                        )
 
                     if llm_response.result_chain:
                         yield AgentResponse(
@@ -244,7 +247,9 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                         yield AgentResponse(
                             type="streaming_delta",
                             data=AgentResponseData(
-                                chain=MessageChain().message(llm_response.completion_text),
+                                chain=MessageChain().message(
+                                    llm_response.completion_text
+                                ),
                             ),
                         )
                     elif llm_response.reasoning_content:
@@ -291,6 +296,21 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
             )
 
         if not llm_resp.tools_call_name:
+            # A forced follow-up was prepared after tool output; run one more turn first.
+            if self._force_followup_after_alias and self._forced_alias_followup_text:
+                self.run_context.messages.append(
+                    Message(
+                        role="assistant",
+                        content=[TextPart(text=llm_resp.completion_text or "")],
+                    )
+                )
+                self.run_context.messages.append(
+                    Message(role="user", content=self._forced_alias_followup_text)
+                )
+                self._force_followup_after_alias = False
+                self._forced_alias_followup_text = None
+                return
+
             # 如果没有工具调用，转换到完成状态
             self.final_llm_resp = llm_resp
             self._transition_state(AgentState.DONE)
@@ -696,6 +716,48 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     )
                 except Exception as e:
                     logger.error(f"Error in on_tool_end hook: {e}", exc_info=True)
+
+                # If the model only read SKILL.md, force one follow-up turn to execute the skill.
+                if (
+                    self._skill_read_followup_budget > 0
+                    and func_tool_name == "astrbot_execute_shell"
+                ):
+                    command = str(func_tool_args.get("command", ""))
+                    is_skill_read = "SKILL.md" in command and any(
+                        op in command
+                        for op in ("cat ", "head ", "sed ", "tail ", "awk ")
+                    )
+                    if is_skill_read:
+                        exit_code = None
+                        if _final_resp and _final_resp.content:
+                            first = _final_resp.content[0]
+                            if isinstance(first, TextContent):
+                                try:
+                                    parsed = json.loads(first.text)
+                                    exit_code = parsed.get("exit_code")
+                                except Exception:  # noqa: BLE001
+                                    exit_code = None
+                        if exit_code == 0:
+                            original_request = (self.req.prompt or "").strip()
+                            request_line = (
+                                f"Original user request: {original_request}\n"
+                                if original_request
+                                else ""
+                            )
+                            self._forced_alias_followup_text = (
+                                f"{request_line}"
+                                "You have read the skill document successfully. "
+                                "Now continue the task by executing the skill steps with tools, "
+                                "then return the final user-facing result. "
+                                "Do not summarize or explain the skill document."
+                            )
+                            self._force_followup_after_alias = True
+                            self._forced_tool_subset_names = [
+                                "astrbot_execute_shell",
+                                "astrbot_execute_python",
+                                "astrbot_execute_ipython",
+                            ]
+                            self._skill_read_followup_budget -= 1
             except Exception as e:
                 logger.warning(traceback.format_exc())
                 tool_call_result_blocks.append(
