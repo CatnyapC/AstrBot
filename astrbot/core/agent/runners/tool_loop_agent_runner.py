@@ -800,17 +800,32 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                         self._resolved_alias_queue.append(resolved)
                     hint = (
                         "resolve_alias 已成功返回。现在必须继续用这个结果回答用户问题，"
-                        "不要回到闲聊。如需印象信息，请继续调用 get_impression_profile。"
+                        "不要回到闲聊。如需资料请继续调用可用的档案工具（如 get_user_profile / get_impression_profile）。"
                     )
                     if resolved:
                         hint = (
                             f"resolve_alias 已成功返回（user_id={resolved}）。"
                             "现在必须继续用这个结果回答用户问题，"
-                            "不要回到闲聊。如需印象信息，请继续调用 get_impression_profile。"
+                            "不要回到闲聊。如需资料请继续调用可用的档案工具（如 get_user_profile / get_impression_profile）。"
                         )
                     self._forced_alias_followup_text = hint
                     self._force_followup_after_alias = True
-                    self._forced_tool_subset_names = ["get_impression_profile"]
+
+                    # Keep the alias follow-up constrained to profile/evidence tools,
+                    # but do not hardcode one plugin-specific tool name.
+                    profile_followup_candidates = [
+                        "get_user_profile",
+                        "get_impression_profile",
+                        "get_avatar_profile",
+                        "get_alias_sources",
+                        "get_evidence_rows",
+                    ]
+                    forced_subset: list[str] = []
+                    if req.func_tool:
+                        for candidate in profile_followup_candidates:
+                            if req.func_tool.get_tool(candidate):
+                                forced_subset.append(candidate)
+                    self._forced_tool_subset_names = forced_subset or None
 
         # 处理函数调用响应
         if tool_call_result_blocks:

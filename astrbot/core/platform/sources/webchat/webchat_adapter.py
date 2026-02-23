@@ -30,10 +30,10 @@ class QueueListener:
         self.webchat_queue_mgr = webchat_queue_mgr
         self.callback = callback
 
-    async def run(self) -> None:
-        """Register callback and keep adapter task alive."""
+    async def run(self, stop_event: asyncio.Event) -> None:
+        """Register callback and keep adapter task alive until terminated."""
         self.webchat_queue_mgr.set_listener(self.callback)
-        await asyncio.Event().wait()
+        await stop_event.wait()
 
 
 @register_platform_adapter("webchat", "webchat")
@@ -56,6 +56,7 @@ class WebChatAdapter(Platform):
             id="webchat",
             support_proactive_message=False,
         )
+        self._listener_stop_event: asyncio.Event | None = None
 
     async def send_by_session(
         self,
@@ -185,7 +186,8 @@ class WebChatAdapter(Platform):
             await self.handle_msg(abm)
 
         bot = QueueListener(webchat_queue_mgr, callback)
-        return bot.run()
+        self._listener_stop_event = asyncio.Event()
+        return bot.run(self._listener_stop_event)
 
     def meta(self) -> PlatformMetadata:
         return self.metadata
@@ -209,5 +211,5 @@ class WebChatAdapter(Platform):
         self.commit_event(message_event)
 
     async def terminate(self) -> None:
-        # Do nothing
-        pass
+        if self._listener_stop_event is not None:
+            self._listener_stop_event.set()

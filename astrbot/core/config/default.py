@@ -999,6 +999,18 @@ CONFIG_METADATA_2 = {
                         "proxy": "",
                         "custom_headers": {},
                     },
+                    "MiniMax": {
+                        "id": "minimax",
+                        "provider": "minimax",
+                        "type": "minimax_chat_completion",
+                        "provider_type": "chat_completion",
+                        "enable": True,
+                        "key": [],
+                        "timeout": 120,
+                        "api_base": "https://api.minimax.chat/v1",
+                        "proxy": "",
+                        "custom_headers": {},
+                    },
                     "Azure OpenAI": {
                         "id": "azure_openai",
                         "provider": "azure",
