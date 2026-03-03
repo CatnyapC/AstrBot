@@ -297,6 +297,10 @@ class ProviderManager:
                 from .sources.minimax_source import ProviderMiniMax as ProviderMiniMax
             case "groq_chat_completion":
                 from .sources.groq_source import ProviderGroq as ProviderGroq
+            case "inception_chat_completion":
+                from .sources.inception_source import (
+                    ProviderInception as ProviderInception,
+                )
             case "anthropic_chat_completion":
                 from .sources.anthropic_source import (
                     ProviderAnthropic as ProviderAnthropic,

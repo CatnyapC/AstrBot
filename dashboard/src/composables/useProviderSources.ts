@@ -306,6 +306,7 @@ export function useProviderSources(options: UseProviderSourcesOptions) {
       anthropic_chat_completion: 'chat_completion',
       googlegenai_chat_completion: 'chat_completion',
       zhipu_chat_completion: 'chat_completion',
+      inception_chat_completion: 'chat_completion',
       dify: 'agent_runner',
       coze: 'agent_runner',
       dashscope: 'chat_completion',

@@ -1,0 +1,14 @@
+{
+  "db": "neo4j",
+  "apply": false,
+  "profiles_with_nickname": 118,
+  "identity_missing_display_name": 3,
+  "identity_candidates_with_profile_nickname": 0,
+  "identity_missing_profile_nickname": 3,
+  "identity_updated": 0,
+  "unmatched_user_ids_sample": [
+    "2083796595",
+    "1964154419",
+    "948241548"
+  ]
+}
