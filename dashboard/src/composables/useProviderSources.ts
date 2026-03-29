@@ -307,6 +307,8 @@ export function useProviderSources(options: UseProviderSourcesOptions) {
       googlegenai_chat_completion: 'chat_completion',
       zhipu_chat_completion: 'chat_completion',
       inception_chat_completion: 'chat_completion',
+      dashscope_coding_openai_chat_completion: 'chat_completion',
+      dashscope_coding_anthropic_chat_completion: 'chat_completion',
       dify: 'agent_runner',
       coze: 'agent_runner',
       dashscope: 'chat_completion',

@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "data/plugins/astrbot_plugin_thread_router"
+		},
+		{
+			"path": "data/plugins/astrbot_plugin_auto_impression_card"
+		}
+	],
+	"settings": {}
+}

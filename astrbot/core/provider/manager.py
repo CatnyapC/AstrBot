@@ -301,6 +301,14 @@ class ProviderManager:
                 from .sources.inception_source import (
                     ProviderInception as ProviderInception,
                 )
+            case "dashscope_coding_openai_chat_completion":
+                from .sources.dashscope_coding_openai_source import (
+                    ProviderDashScopeCodingOpenAI as ProviderDashScopeCodingOpenAI,
+                )
+            case "dashscope_coding_anthropic_chat_completion":
+                from .sources.dashscope_coding_anthropic_source import (
+                    ProviderDashScopeCodingAnthropic as ProviderDashScopeCodingAnthropic,
+                )
             case "anthropic_chat_completion":
                 from .sources.anthropic_source import (
                     ProviderAnthropic as ProviderAnthropic,
