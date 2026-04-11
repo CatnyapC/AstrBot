@@ -1,0 +1,25 @@
+{
+  "mode": "apply",
+  "sqlite_db": "/Users/lincoln/Git/AstrBot/data/plugin_data/astrbot_plugin_auto_impression_card/impressions.db",
+  "memory_nodes_scanned": 5445,
+  "rebuilt_rows": 5445,
+  "deleted_rows": 2252,
+  "applied_rows": 5445,
+  "failed_embedding_rows": 0,
+  "apply_aborted_reason": "",
+  "filters": {
+    "item_types": [
+      "impression",
+      "fact",
+      "knowledge",
+      "tag"
+    ],
+    "group_ids": [],
+    "limit": 0
+  },
+  "sample_failed_texts": [],
+  "first_embedding_failure_reason": "",
+  "provider_id": "openai",
+  "model": "text-embedding-3-small",
+  "generated_at": 1775202916
+}

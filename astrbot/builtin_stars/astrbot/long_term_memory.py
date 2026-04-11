@@ -136,7 +136,9 @@ class LongTermMemory:
                             )
                             parts.append(f" [Image: {caption}]")
                         except Exception as e:
-                            logger.error(f"获取图片描述失败: {e}")
+                            logger.warning(
+                                f"获取图片描述失败，已跳过该图片 caption: {e}"
+                            )
                     else:
                         parts.append(" [Image]")
                 elif isinstance(comp, At):

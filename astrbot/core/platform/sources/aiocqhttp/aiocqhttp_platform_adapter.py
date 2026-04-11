@@ -251,31 +251,32 @@ class AiocqhttpAdapter(Platform):
 
             elif t == "file":
                 for m in m_group:
+                    file_name = (
+                        m["data"].get("file_name", "")
+                        or m["data"].get("name", "")
+                        or m["data"].get("file", "")
+                        or "file"
+                    )
                     if m["data"].get("url") and m["data"].get("url").startswith("http"):
                         # Lagrange
                         logger.info("guessing lagrange")
-                        # 检查多个可能的文件名字段
-                        file_name = (
-                            m["data"].get("file_name", "")
-                            or m["data"].get("name", "")
-                            or m["data"].get("file", "")
-                            or "file"
-                        )
                         abm.message.append(File(name=file_name, url=m["data"]["url"]))
+                        message_str += f"[文件]{file_name}"
                     else:
                         try:
                             # Napcat
                             ret = None
+                            file_id = m["data"].get("file_id")
                             if abm.type == MessageType.GROUP_MESSAGE:
                                 ret = await self.bot.call_action(
                                     action="get_group_file_url",
-                                    file_id=event.message[0]["data"]["file_id"],
+                                    file_id=file_id,
                                     group_id=event.group_id,
                                 )
                             elif abm.type == MessageType.FRIEND_MESSAGE:
                                 ret = await self.bot.call_action(
                                     action="get_private_file_url",
-                                    file_id=event.message[0]["data"]["file_id"],
+                                    file_id=file_id,
                                 )
                             if ret and "url" in ret:
                                 file_url = ret["url"]  # https
@@ -288,13 +289,26 @@ class AiocqhttpAdapter(Platform):
                                 )
                                 a = File(name=file_name, url=file_url)
                                 abm.message.append(a)
+                                message_str += f"[文件]{file_name}"
                             else:
-                                logger.error(f"获取文件失败: {ret}")
+                                logger.warning(
+                                    f"获取文件下载链接失败，降级保留文件消息: {ret}",
+                                )
+                                abm.message.append(File(name=file_name))
+                                message_str += f"[文件]{file_name}"
 
                         except ActionFailed as e:
-                            logger.error(f"获取文件失败: {e}，此消息段将被忽略。")
+                            logger.warning(
+                                f"获取文件失败: {e}，降级保留文件消息。",
+                            )
+                            abm.message.append(File(name=file_name))
+                            message_str += f"[文件]{file_name}"
                         except BaseException as e:
-                            logger.error(f"获取文件失败: {e}，此消息段将被忽略。")
+                            logger.warning(
+                                f"获取文件失败: {e}，降级保留文件消息。",
+                            )
+                            abm.message.append(File(name=file_name))
+                            message_str += f"[文件]{file_name}"
 
             elif t == "reply":
                 for m in m_group:

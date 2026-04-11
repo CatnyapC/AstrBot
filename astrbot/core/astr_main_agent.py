@@ -470,7 +470,7 @@ async def _ensure_img_caption(
             )
             req.image_urls = []
     except Exception as exc:  # noqa: BLE001
-        logger.error("处理图片描述失败: %s", exc)
+        logger.warning("处理图片描述失败，已跳过图片 caption: %s", exc)
 
 
 async def _process_quote_message(
@@ -515,7 +515,7 @@ async def _process_quote_message(
             else:
                 logger.warning("No provider found for image captioning in quote.")
         except BaseException as exc:
-            logger.error("处理引用图片失败: %s", exc)
+            logger.warning("处理引用图片失败，已跳过引用图片 caption: %s", exc)
 
     quoted_content = "\n".join(content_parts)
     quoted_text = f"<Quoted Message>\n{quoted_content}\n</Quoted Message>"

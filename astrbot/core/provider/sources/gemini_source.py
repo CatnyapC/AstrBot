@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import random
+import re
 from collections.abc import AsyncGenerator
 from typing import cast
 
@@ -38,6 +39,37 @@ logging.getLogger("google_genai.types").addFilter(SuppressNonTextPartsWarning())
     "Google Gemini Chat Completion 提供商适配器",
 )
 class ProviderGoogleGenAI(Provider):
+    LEAKED_REASONING_MARKERS = (
+        "Draft 1:",
+        "Draft 2:",
+        "Draft 3:",
+        "Revised:",
+        "Selected response:",
+        "Final Polish:",
+        "Check length:",
+        "No quotes?",
+        "Call user:",
+        "Call self:",
+        "Character (",
+        "Current state:",
+        "Goal:",
+    )
+    LEAKED_REASONING_FRAGMENTS = (
+        "Draft",
+        "Revised",
+        "Selected response",
+        "Final Polish",
+        "Check length",
+        "No quotes",
+        "Call user",
+        "Call self",
+        "Character (",
+        "Current state",
+        "Goal:",
+        "Wait, let's",
+        "Actually,",
+    )
+
     CATEGORY_MAPPING = {
         "harassment": types.HarmCategory.HARM_CATEGORY_HARASSMENT,
         "hate_speech": types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
@@ -100,6 +132,106 @@ class ProviderGoogleGenAI(Provider):
             if (threshold_str := user_safety_config.get(config_key))
             and threshold_str in self.THRESHOLD_MAPPING
         ]
+
+    def _get_custom_extra_body(self) -> dict:
+        extra_body = self.provider_config.get("custom_extra_body", {})
+        if not isinstance(extra_body, dict):
+            return {}
+        return dict(extra_body)
+
+    def _normalize_custom_config_kwargs(self, config_kwargs: dict) -> dict:
+        extra_body = self._get_custom_extra_body()
+        if "max_tokens" in extra_body and "max_output_tokens" not in extra_body:
+            extra_body["max_output_tokens"] = extra_body.pop("max_tokens")
+        config_kwargs.update(extra_body)
+        return config_kwargs
+
+    @staticmethod
+    def _dedupe_repeated_text(text: str) -> str:
+        stripped = text.strip()
+        half = len(stripped) // 2
+        if half > 0 and len(stripped) % 2 == 0 and stripped[:half] == stripped[half:]:
+            return stripped[:half].strip()
+        return stripped
+
+    @classmethod
+    def _sanitize_leaked_reasoning_text(cls, text: str) -> str:
+        stripped = text.strip()
+        if not stripped:
+            return stripped
+
+        if not cls._looks_like_leaked_reasoning(stripped):
+            return cls._dedupe_repeated_text(stripped)
+
+        revised_match = re.search(
+            r"(?:Revised:|Final Polish:)\s*(.+)$",
+            stripped,
+            flags=re.S,
+        )
+        if revised_match:
+            tail = revised_match.group(1).strip()
+            tail_lines = [line.strip() for line in tail.splitlines() if line.strip()]
+            for line in tail_lines:
+                if cls._looks_like_leaked_reasoning(line):
+                    continue
+                cleaned = cls._strip_instruction_prefix(line)
+                if cleaned:
+                    return cls._dedupe_repeated_text(cleaned)
+
+        quoted_candidates: list[str] = []
+        for match in re.findall(r"[\"“](.*?)[\"”]", stripped, flags=re.S):
+            candidate = cls._strip_instruction_prefix(" ".join(match.split()).strip())
+            if (
+                candidate
+                and len(candidate) <= 200
+                and not any(marker in candidate for marker in cls.LEAKED_REASONING_MARKERS)
+            ):
+                quoted_candidates.append(candidate)
+
+        if quoted_candidates:
+            return cls._dedupe_repeated_text(quoted_candidates[-1])
+
+        cleaned_lines: list[str] = []
+        for line in stripped.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("*"):
+                continue
+            if any(marker in line for marker in cls.LEAKED_REASONING_MARKERS):
+                continue
+            if line.startswith("Wait,") or line.startswith("Actually,"):
+                continue
+            line = cls._strip_instruction_prefix(line)
+            if line:
+                cleaned_lines.append(line)
+
+        if cleaned_lines:
+            return cls._dedupe_repeated_text(cleaned_lines[-1])
+
+        return cls._dedupe_repeated_text(stripped)
+
+    @classmethod
+    def _looks_like_leaked_reasoning(cls, text: str) -> bool:
+        stripped = text.strip()
+        if not stripped:
+            return False
+        if any(marker in stripped for marker in cls.LEAKED_REASONING_MARKERS):
+            return True
+        lowered = stripped.lower()
+        return any(fragment.lower() in lowered for fragment in cls.LEAKED_REASONING_FRAGMENTS)
+
+    @staticmethod
+    def _strip_instruction_prefix(text: str) -> str:
+        stripped = text.strip().strip('"“”')
+        patterns = [
+            r"^不要使用中文引号、英文引号包裹整句台词[。！!？?\s]*",
+            r"^不要使用[^。！!？?\n]*[。！!？?\s]+",
+            r"^The draft is fine[。.!?\s]*",
+        ]
+        for pattern in patterns:
+            stripped = re.sub(pattern, "", stripped, flags=re.I)
+        return stripped.strip()
 
     async def _handle_api_error(self, e: APIError, keys: list[str]) -> bool:
         """处理API错误，返回是否需要重试"""
@@ -254,30 +386,33 @@ class ProviderGoogleGenAI(Provider):
                 else:
                     thinking_config.thinking_level = level
 
-        return types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=temperature,
-            max_output_tokens=payloads.get("max_tokens")
-            or payloads.get("maxOutputTokens"),
-            top_p=payloads.get("top_p") or payloads.get("topP"),
-            top_k=payloads.get("top_k") or payloads.get("topK"),
-            frequency_penalty=payloads.get("frequency_penalty")
-            or payloads.get("frequencyPenalty"),
-            presence_penalty=payloads.get("presence_penalty")
-            or payloads.get("presencePenalty"),
-            stop_sequences=payloads.get("stop") or payloads.get("stopSequences"),
-            response_logprobs=payloads.get("response_logprobs")
-            or payloads.get("responseLogprobs"),
-            logprobs=payloads.get("logprobs"),
-            seed=payloads.get("seed"),
-            response_modalities=modalities,
-            tools=cast(types.ToolListUnion | None, tool_list),
-            safety_settings=self.safety_settings if self.safety_settings else None,
-            thinking_config=thinking_config,
-            automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                disable=True,
-            ),
+        config_kwargs = self._normalize_custom_config_kwargs(
+            {
+                "system_instruction": system_instruction,
+                "temperature": temperature,
+                "max_output_tokens": payloads.get("max_tokens")
+                or payloads.get("maxOutputTokens"),
+                "top_p": payloads.get("top_p") or payloads.get("topP"),
+                "top_k": payloads.get("top_k") or payloads.get("topK"),
+                "frequency_penalty": payloads.get("frequency_penalty")
+                or payloads.get("frequencyPenalty"),
+                "presence_penalty": payloads.get("presence_penalty")
+                or payloads.get("presencePenalty"),
+                "stop_sequences": payloads.get("stop") or payloads.get("stopSequences"),
+                "response_logprobs": payloads.get("response_logprobs")
+                or payloads.get("responseLogprobs"),
+                "logprobs": payloads.get("logprobs"),
+                "seed": payloads.get("seed"),
+                "response_modalities": modalities,
+                "tools": cast(types.ToolListUnion | None, tool_list),
+                "safety_settings": self.safety_settings if self.safety_settings else None,
+                "thinking_config": thinking_config,
+                "automatic_function_calling": types.AutomaticFunctionCallingConfig(
+                    disable=True,
+                ),
+            }
         )
+        return types.GenerateContentConfig(**config_kwargs)
 
     def _prepare_conversation(self, payloads: dict) -> list[types.Content]:
         """准备 Gemini SDK 的 Content 列表"""
@@ -480,7 +615,14 @@ class ProviderGoogleGenAI(Provider):
             chain.append(Comp.Plain("这是图片"))
         for part in result_parts:
             if part.text:
-                chain.append(Comp.Plain(part.text))
+                sanitized_text = self._sanitize_leaked_reasoning_text(part.text)
+                if sanitized_text != part.text.strip():
+                    logger.warning(
+                        "[Gemini] 检测到疑似推理泄漏，已对正文进行清洗。"
+                        f" 清洗前文本: {part.text!r}"
+                    )
+                if sanitized_text:
+                    chain.append(Comp.Plain(sanitized_text))
 
             if (
                 part.function_call
@@ -641,8 +783,10 @@ class ProviderGoogleGenAI(Provider):
 
         # Accumulate the complete response text for the final response
         accumulated_text = ""
+        accumulated_raw_text = ""
         accumulated_reasoning = ""
         final_response = None
+        suppress_stream_text = False
 
         async for chunk in result:
             llm_response = LLMResponse("assistant", is_chunk=True)
@@ -678,9 +822,19 @@ class ProviderGoogleGenAI(Provider):
                 accumulated_reasoning += reasoning
                 llm_response.reasoning_content = reasoning
             if chunk.text:
-                _f = True
-                accumulated_text += chunk.text
-                llm_response.result_chain = MessageChain(chain=[Comp.Plain(chunk.text)])
+                accumulated_raw_text += chunk.text
+                if self._looks_like_leaked_reasoning(accumulated_raw_text):
+                    suppress_stream_text = True
+                if not suppress_stream_text:
+                    sanitized_chunk_text = self._sanitize_leaked_reasoning_text(
+                        chunk.text
+                    )
+                    if sanitized_chunk_text:
+                        _f = True
+                        accumulated_text += sanitized_chunk_text
+                        llm_response.result_chain = MessageChain(
+                            chain=[Comp.Plain(sanitized_chunk_text)]
+                        )
             if _f:
                 yield llm_response
 
@@ -707,6 +861,8 @@ class ProviderGoogleGenAI(Provider):
             final_response.reasoning_content = accumulated_reasoning
 
         # Set the complete accumulated text in the final response
+        if accumulated_raw_text:
+            accumulated_text = self._sanitize_leaked_reasoning_text(accumulated_raw_text)
         if accumulated_text:
             final_response.result_chain = MessageChain(
                 chain=[Comp.Plain(accumulated_text)],

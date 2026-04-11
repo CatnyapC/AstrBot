@@ -73,6 +73,18 @@ class MockProvider(Provider):
         yield response
 
 
+class SequenceProvider(MockProvider):
+    def __init__(self, responses: list[LLMResponse]):
+        super().__init__()
+        self.responses = responses
+
+    async def text_chat(self, **kwargs) -> LLMResponse:
+        self.call_count += 1
+        if self.responses:
+            return self.responses.pop(0)
+        return await super().text_chat(**kwargs)
+
+
 class MockToolExecutor:
     """模拟工具执行器"""
 
@@ -319,6 +331,111 @@ async def test_hooks_called_with_max_step(
     assert mock_hooks.agent_done_called, "on_agent_done应该被调用"
     assert mock_hooks.tool_start_called, "on_tool_start应该被调用"
     assert mock_hooks.tool_end_called, "on_tool_end应该被调用"
+
+
+@pytest.mark.asyncio
+async def test_uncertain_fact_reply_forces_tool_followup(
+    runner, tool_set, mock_tool_executor, mock_hooks
+):
+    provider = SequenceProvider(
+        [
+            LLMResponse(
+                role="assistant",
+                completion_text="One Republic？我好像听说过这个名字。",
+                usage=TokenUsage(input_other=10, output=5),
+            ),
+            LLMResponse(
+                role="assistant",
+                completion_text="我再查一下。",
+                tools_call_name=["test_tool"],
+                tools_call_args=[{"query": "One Republic"}],
+                tools_call_ids=["call_456"],
+                usage=TokenUsage(input_other=10, output=5),
+            ),
+            LLMResponse(
+                role="assistant",
+                completion_text="OneRepublic 是一支美国流行摇滚乐队。",
+                usage=TokenUsage(input_other=10, output=5),
+            ),
+        ]
+    )
+
+    request = ProviderRequest(
+        prompt="你知道 One Republic 吗？",
+        func_tool=tool_set,
+        contexts=[],
+    )
+
+    await runner.reset(
+        provider=provider,
+        request=request,
+        run_context=ContextWrapper(context=None),
+        tool_executor=mock_tool_executor,
+        agent_hooks=mock_hooks,
+        streaming=False,
+    )
+
+    responses = []
+    async for response in runner.step_until_done(5):
+        responses.append(response)
+
+    assert runner.done(), "代理应该在补充工具调用后完成"
+    assert provider.call_count == 3, "含糊事实答复应触发额外一轮工具跟进"
+    assert mock_hooks.tool_start_called, "补充跟进后应实际调用工具"
+    assert (
+        runner.get_final_llm_resp().completion_text
+        == "OneRepublic 是一支美国流行摇滚乐队。"
+    )
+    assert any(
+        message.role == "user"
+        and "不要直接用“好像/似乎/有点印象”这类措辞收尾" in str(message.content)
+        for message in runner.run_context.messages
+    ), "runner 应注入继续核实的 follow-up 提示"
+
+
+@pytest.mark.asyncio
+async def test_uncertain_reply_without_investigative_tools_finishes_normally(
+    runner, mock_tool_executor, mock_hooks
+):
+    provider = SequenceProvider(
+        [
+            LLMResponse(
+                role="assistant",
+                completion_text="One Republic？我好像听说过这个名字。",
+                usage=TokenUsage(input_other=10, output=5),
+            )
+        ]
+    )
+    send_only_tools = ToolSet(
+        tools=[
+            FunctionTool(
+                name="send_message_to_user",
+                description="send",
+                parameters={"type": "object", "properties": {}},
+                handler=AsyncMock(),
+            )
+        ]
+    )
+    request = ProviderRequest(
+        prompt="你知道 One Republic 吗",
+        func_tool=send_only_tools,
+        contexts=[],
+    )
+
+    await runner.reset(
+        provider=provider,
+        request=request,
+        run_context=ContextWrapper(context=None),
+        tool_executor=mock_tool_executor,
+        agent_hooks=mock_hooks,
+        streaming=False,
+    )
+
+    async for _ in runner.step_until_done(3):
+        pass
+
+    assert runner.done(), "没有可核实工具时应直接结束"
+    assert provider.call_count == 1, "没有可核实工具时不应强行追问"
 
 
 if __name__ == "__main__":

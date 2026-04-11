@@ -374,6 +374,9 @@ class ProviderOpenAIOfficial(Provider):
         model = model or self.get_model()
 
         payloads = {"messages": context_query, "model": model}
+        for key, value in kwargs.items():
+            if value is not None and key not in payloads:
+                payloads[key] = value
 
         self._finally_convert_payload(payloads)
 
