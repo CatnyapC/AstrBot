@@ -46,6 +46,9 @@ class ProviderGoogleGenAI(Provider):
         "Revised:",
         "Selected response:",
         "Final Polish:",
+        "Final Version:",
+        "Final Answer:",
+        "Final Answer Construction:",
         "Check length:",
         "No quotes?",
         "Call user:",
@@ -162,6 +165,25 @@ class ProviderGoogleGenAI(Provider):
 
         if not cls._looks_like_leaked_reasoning(stripped):
             return cls._dedupe_repeated_text(stripped)
+
+        final_block_match = re.search(
+            r"(?:Final Answer Construction:|Final Version:|Final Answer:)\s*(.+)$",
+            stripped,
+            flags=re.S,
+        )
+        if final_block_match:
+            tail = final_block_match.group(1).strip()
+            tail_lines = [line.strip() for line in tail.splitlines() if line.strip()]
+            for line in tail_lines:
+                if line.startswith("*"):
+                    continue
+                if cls._looks_like_leaked_reasoning(line):
+                    continue
+                cleaned = cls._strip_instruction_prefix(
+                    line.lstrip(":'\"“”").strip()
+                )
+                if cleaned:
+                    return cls._dedupe_repeated_text(cleaned)
 
         revised_match = re.search(
             r"(?:Revised:|Final Polish:)\s*(.+)$",

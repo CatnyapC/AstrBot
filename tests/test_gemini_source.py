@@ -53,3 +53,19 @@ Revised:
         ProviderGoogleGenAI._sanitize_leaked_reasoning_text(leaked)
         == "艾可弟弟超级可爱的！狐记得艾可有青蓝色的角，整体是淡紫色的，眼睛圆圆的，尾巴也蓬松得像云朵一样！【狐米歪了歪头，水色耳饰在耳边轻轻晃动】"
     )
+
+
+def test_gemini_sanitize_prefers_final_answer_construction_over_quotes():
+    leaked = """
+*   Wait, I should check if "狐米" is allowed to use "狐" as a pronoun.
+    *   "在发言中多次需要指代自己时，经常使用狐称呼自己。"
+    *   Yes.
+
+    *   Final Answer Construction:
+        漓漓，狐记得可乐是一只超级可爱的小狼，有着圆圆的大蓝眼睛，腿也特别长哦！【狐米轻快地晃了晃蓬松的尾巴】
+"""
+
+    assert (
+        ProviderGoogleGenAI._sanitize_leaked_reasoning_text(leaked)
+        == "漓漓，狐记得可乐是一只超级可爱的小狼，有着圆圆的大蓝眼睛，腿也特别长哦！【狐米轻快地晃了晃蓬松的尾巴】"
+    )
