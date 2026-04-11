@@ -1,10 +1,12 @@
 import copy
 import json
+import re
 import sys
 import time
 import traceback
 import typing as T
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 
 from mcp.types import (
     BlobResourceContents,
@@ -77,6 +79,33 @@ _TOOL_GROUNDING_QUERY_HINTS = (
     "tell me about",
     "do you know",
 )
+
+
+def _normalize_stream_text_for_compare(text: str) -> str:
+    compact = re.sub(r"\s+", "", text.strip())
+    return re.sub(r"[。！!？?,，、…~～·`'\"“”‘’]", "", compact)
+
+
+def _looks_like_duplicate_streamed_final(
+    streamed_text: str, final_plain_text: str
+) -> bool:
+    normalized_streamed = _normalize_stream_text_for_compare(streamed_text)
+    normalized_final = _normalize_stream_text_for_compare(final_plain_text)
+
+    if not normalized_streamed or not normalized_final:
+        return False
+    if normalized_streamed == normalized_final:
+        return True
+
+    shorter, longer = sorted(
+        (normalized_streamed, normalized_final),
+        key=len,
+    )
+    if shorter in longer and len(shorter) / len(longer) >= 0.85:
+        return True
+
+    return SequenceMatcher(None, normalized_streamed, normalized_final).ratio() >= 0.92
+
 
 _NON_INVESTIGATIVE_TOOL_NAMES = {"send_message_to_user"}
 
@@ -440,7 +469,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         suppress_duplicate_final_result = (
             streamed_text_emitted
             and final_plain_text
-            and streamed_text.strip() == final_plain_text
+            and _looks_like_duplicate_streamed_final(streamed_text, final_plain_text)
             and not llm_resp.tools_call_name
         )
 

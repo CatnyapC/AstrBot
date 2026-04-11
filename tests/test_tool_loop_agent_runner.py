@@ -85,6 +85,26 @@ class SequenceProvider(MockProvider):
         return await super().text_chat(**kwargs)
 
 
+class VariantStreamProvider(MockProvider):
+    def __init__(self, chunk_text: str, final_text: str):
+        super().__init__()
+        self.chunk_text = chunk_text
+        self.final_text = final_text
+
+    async def text_chat_stream(self, **kwargs):
+        yield LLMResponse(
+            role="assistant",
+            completion_text=self.chunk_text,
+            is_chunk=True,
+        )
+        yield LLMResponse(
+            role="assistant",
+            completion_text=self.final_text,
+            is_chunk=False,
+            usage=TokenUsage(input_other=10, output=5),
+        )
+
+
 class MockToolExecutor:
     """模拟工具执行器"""
 
@@ -436,6 +456,39 @@ async def test_uncertain_reply_without_investigative_tools_finishes_normally(
 
     assert runner.done(), "没有可核实工具时应直接结束"
     assert provider.call_count == 1, "没有可核实工具时不应强行追问"
+
+
+@pytest.mark.asyncio
+async def test_streaming_final_result_is_suppressed_for_near_duplicate_text(
+    runner, provider_request, mock_tool_executor, mock_hooks
+):
+    provider = VariantStreamProvider(
+        chunk_text="唔，让狐再努力搜寻一下记忆...不过现在狐满脑子都是可乐呢！【狐米有些俏皮地眨了眨眼】",
+        final_text="唔，让狐再努力搜寻一下记忆...不过现在狐满脑子都是可乐呀！【狐米有些俏皮地眨了眨眼】",
+    )
+
+    await runner.reset(
+        provider=provider,
+        request=provider_request,
+        run_context=ContextWrapper(context=None),
+        tool_executor=mock_tool_executor,
+        agent_hooks=mock_hooks,
+        streaming=True,
+    )
+
+    responses = []
+    async for response in runner.step_until_done(3):
+        responses.append(response)
+
+    streaming_responses = [r for r in responses if r.type == "streaming_delta"]
+    final_responses = [r for r in responses if r.type == "llm_result"]
+
+    assert len(streaming_responses) == 1
+    assert len(final_responses) == 0
+    assert (
+        runner.get_final_llm_resp().completion_text
+        == "唔，让狐再努力搜寻一下记忆...不过现在狐满脑子都是可乐呀！【狐米有些俏皮地眨了眨眼】"
+    )
 
 
 if __name__ == "__main__":
