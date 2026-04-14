@@ -49,38 +49,6 @@ else:
     from typing_extensions import override
 
 
-_TOOL_GROUNDING_HEDGE_PATTERNS = (
-    "好像",
-    "似乎",
-    "听说过这个名字",
-    "有点印象",
-    "不太确定",
-    "不太清楚",
-    "sounds familiar",
-    "heard of the name",
-    "kind of know",
-    "sort of know",
-    "not quite sure",
-)
-
-_TOOL_GROUNDING_QUERY_HINTS = (
-    "知道",
-    "认识",
-    "了解",
-    "是什么",
-    "谁是",
-    "什么是",
-    "how",
-    "what",
-    "who",
-    "when",
-    "where",
-    "which",
-    "tell me about",
-    "do you know",
-)
-
-
 def _normalize_stream_text_for_compare(text: str) -> str:
     compact = re.sub(r"\s+", "", text.strip())
     return re.sub(r"[。！!？?,，、…~～·`'\"“”‘’]", "", compact)
@@ -105,53 +73,6 @@ def _looks_like_duplicate_streamed_final(
         return True
 
     return SequenceMatcher(None, normalized_streamed, normalized_final).ratio() >= 0.92
-
-
-_NON_INVESTIGATIVE_TOOL_NAMES = {"send_message_to_user"}
-
-_TOOL_GROUNDING_FOLLOWUP_PROMPT = (
-    "你的上一版回答仍然是含糊判断。若当前问题在询问事实、身份、定义或背景，且仍有可用工具，"
-    "不要直接用“好像/似乎/有点印象”这类措辞收尾。请继续调用合适的工具核实关键信息，"
-    "再给用户明确答复；如果工具结果仍不足，也要具体说明还缺什么，而不是泛化成模糊印象。"
-)
-
-
-def _content_to_text(content: T.Any) -> str:
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if text := getattr(item, "text", None):
-                parts.append(str(text))
-            elif isinstance(item, dict) and item.get("type") == "text":
-                parts.append(str(item.get("text", "")))
-        return "\n".join(part for part in parts if part)
-    return str(content)
-
-
-def _looks_like_uncertain_fact_reply(text: str) -> bool:
-    normalized = text.strip().lower()
-    if not normalized:
-        return False
-    return any(
-        pattern in text or pattern in normalized
-        for pattern in _TOOL_GROUNDING_HEDGE_PATTERNS
-    )
-
-
-def _looks_like_fact_query(text: str) -> bool:
-    normalized = text.strip().lower()
-    if not normalized:
-        return False
-    if "?" in normalized or "？" in text:
-        return True
-    return any(
-        pattern in text or pattern in normalized
-        for pattern in _TOOL_GROUNDING_QUERY_HINTS
-    )
 
 
 @dataclass(slots=True)
@@ -237,7 +158,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self._forced_alias_followup_text = None
         self._forced_tool_subset_names: list[str] | None = None
         self._skill_read_followup_budget = 1
-        self._tool_grounding_followup_budget = 1
+        self._resolved_alias_queue: list[str] = []
 
         # These two are used for tool schema mode handling
         # We now have two modes:
@@ -424,25 +345,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 )
                 self._force_followup_after_alias = False
                 self._forced_alias_followup_text = None
-                return
-
-            if self._should_force_tool_grounding_followup(llm_resp):
-                logger.info(
-                    "Agent forcing tool-grounded follow-up: tools=%s draft=%r",
-                    self._investigative_tool_names(),
-                    llm_resp.completion_text,
-                )
-                self.run_context.messages.append(
-                    Message(
-                        role="assistant",
-                        content=self._build_assistant_parts(llm_resp),
-                    )
-                )
-                self.run_context.messages.append(
-                    Message(role="user", content=_TOOL_GROUNDING_FOLLOWUP_PROMPT)
-                )
-                self._forced_tool_subset_names = self._investigative_tool_names()
-                self._tool_grounding_followup_budget -= 1
                 return
 
             # 如果没有工具调用，转换到完成状态
@@ -700,6 +602,18 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     # 如果没有 handler（如 MCP 工具），使用所有参数
                     valid_params = func_tool_args
 
+                if (
+                    func_tool_name == "get_impression_profile"
+                    and self._resolved_alias_queue
+                ):
+                    forced_target = self._resolved_alias_queue.pop(0)
+                    valid_params = dict(valid_params)
+                    valid_params["target"] = forced_target
+                    logger.info(
+                        "get_impression_profile forced target from resolve_alias: %s",
+                        forced_target,
+                    )
+
                 try:
                     await self.agent_hooks.on_tool_start(
                         self.run_context,
@@ -917,15 +831,17 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     resolved = str(resolved).strip()
                     if "," in resolved:
                         resolved = resolved.split(",", 1)[0].strip()
+                    if resolved:
+                        self._resolved_alias_queue.append(resolved)
                     hint = (
                         "resolve_alias 已成功返回。现在必须继续用这个结果回答用户问题，"
-                        "不要回到闲聊。如需资料请继续调用可用的档案工具（如 get_user_profile）。"
+                        "不要回到闲聊。如需资料请继续调用可用的档案工具（如 get_user_profile / get_impression_profile）。"
                     )
                     if resolved:
                         hint = (
                             f"resolve_alias 已成功返回（user_id={resolved}）。"
                             "现在必须继续用这个结果回答用户问题，"
-                            "不要回到闲聊。如需资料请继续调用可用的档案工具（如 get_user_profile）。"
+                            "不要回到闲聊。如需资料请继续调用可用的档案工具（如 get_user_profile / get_impression_profile）。"
                         )
                     self._forced_alias_followup_text = hint
                     self._force_followup_after_alias = True
@@ -934,6 +850,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     # but do not hardcode one plugin-specific tool name.
                     profile_followup_candidates = [
                         "get_user_profile",
+                        "get_impression_profile",
                         "get_avatar_profile",
                         "get_alias_sources",
                         "get_evidence_rows",
@@ -1038,27 +955,3 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
             parts.append(TextPart(text=llm_resp.completion_text))
         return parts
 
-    def _investigative_tool_names(self) -> list[str]:
-        if not self.req or not self.req.func_tool:
-            return []
-        return [
-            name
-            for name in self.req.func_tool.names()
-            if name not in _NON_INVESTIGATIVE_TOOL_NAMES
-        ]
-
-    def _latest_user_text(self) -> str:
-        for message in reversed(self.run_context.messages):
-            if getattr(message, "role", None) == "user":
-                return _content_to_text(getattr(message, "content", None))
-        return ""
-
-    def _should_force_tool_grounding_followup(self, llm_resp: LLMResponse) -> bool:
-        if self._tool_grounding_followup_budget <= 0:
-            return False
-        if not self._investigative_tool_names():
-            return False
-        reply_text = llm_resp.completion_text or ""
-        if not _looks_like_uncertain_fact_reply(reply_text):
-            return False
-        return _looks_like_fact_query(self._latest_user_text())

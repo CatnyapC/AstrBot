@@ -1,0 +1,46 @@
+{
+  "db": "neo4j",
+  "apply": true,
+  "vector_index_name": "memory_node_embedding",
+  "vector_index_state": {
+    "name": "memory_node_embedding",
+    "type": "VECTOR",
+    "state": "ONLINE",
+    "labels_or_types": [
+      "MemoryNode"
+    ],
+    "properties": [
+      "embedding"
+    ],
+    "options": {
+      "indexConfig": {
+        "vector.dimensions": 3072,
+        "vector.hnsw.m": 16,
+        "vector.quantization.enabled": true,
+        "vector.similarity_function": "COSINE",
+        "vector.hnsw.ef_construction": 100
+      },
+      "indexProvider": "vector-3.0"
+    }
+  },
+  "vector_index_online": true,
+  "embedding_model": "text-embedding-3-large",
+  "embedding_dimensions": 3072,
+  "backfill_excluded_item_types": [
+    "alias",
+    "self_reference"
+  ],
+  "pending_before": 128,
+  "pending_by_type_before": {
+    "social_claim": 86,
+    "knowledge": 40,
+    "impression": 2
+  },
+  "updated": 128,
+  "pending_after": 0,
+  "pending_by_type_after": {},
+  "failed": 0,
+  "skipped_missing_embedding": 0,
+  "pending_sample": [],
+  "failed_sample": []
+}
