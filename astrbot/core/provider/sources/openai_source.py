@@ -31,6 +31,14 @@ from astrbot.core.utils.network_utils import (
 from ..register import register_provider_adapter
 
 
+_RETRYABLE_PROVIDER_ERROR_MAX_RETRIES = 3
+_RETRYABLE_PROVIDER_ERROR_BACKOFF_SEC = (1.0, 2.0)
+
+
+class EmptyOrMalformedCompletionError(Exception):
+    """OpenAI-compatible payload missing required completion fields."""
+
+
 @register_provider_adapter(
     "openai_chat_completion",
     "OpenAI API Chat Completion 提供商适配器",
@@ -187,9 +195,14 @@ class ProviderOpenAIOfficial(Provider):
                 state.handle_chunk(chunk)
             except Exception as e:
                 logger.warning("Saving chunk state error: " + str(e))
-            if len(chunk.choices) == 0:
+            chunk_choices = self._coerce_choices(
+                chunk,
+                field_name="chunk.choices",
+                allow_missing=True,
+            )
+            if len(chunk_choices) == 0:
                 continue
-            delta = chunk.choices[0].delta
+            delta = chunk_choices[0].delta
             # logger.debug(f"chunk delta: {delta}")
             # handle the content delta
             reasoning = self._extract_reasoning_content(chunk)
@@ -220,15 +233,20 @@ class ProviderOpenAIOfficial(Provider):
     ) -> str:
         """Extract reasoning content from OpenAI ChatCompletion if available."""
         reasoning_text = ""
-        if len(completion.choices) == 0:
+        choices = self._coerce_choices(
+            completion,
+            field_name="completion.choices",
+            allow_missing=True,
+        )
+        if len(choices) == 0:
             return reasoning_text
         if isinstance(completion, ChatCompletion):
-            choice = completion.choices[0]
+            choice = choices[0]
             reasoning_attr = getattr(choice.message, self.reasoning_key, None)
             if reasoning_attr:
                 reasoning_text = str(reasoning_attr)
         elif isinstance(completion, ChatCompletionChunk):
-            delta = completion.choices[0].delta
+            delta = choices[0].delta
             reasoning_attr = getattr(delta, self.reasoning_key, None)
             if reasoning_attr:
                 reasoning_text = str(reasoning_attr)
@@ -253,9 +271,10 @@ class ProviderOpenAIOfficial(Provider):
         """Parse OpenAI ChatCompletion into LLMResponse"""
         llm_response = LLMResponse("assistant")
 
-        if len(completion.choices) == 0:
+        choices = self._coerce_choices(completion, field_name="completion.choices")
+        if len(choices) == 0:
             raise Exception("API 返回的 completion 为空。")
-        choice = completion.choices[0]
+        choice = choices[0]
 
         # parse the text completion
         if choice.message.content is not None:
@@ -333,6 +352,49 @@ class ProviderOpenAIOfficial(Provider):
             llm_response.usage = self._extract_usage(completion.usage)
 
         return llm_response
+
+    def _summarize_completion(self, completion: object) -> str:
+        summary = repr(completion)
+        if len(summary) > 600:
+            summary = summary[:600] + "...(truncated)"
+        return summary
+
+    def _coerce_choices(
+        self,
+        completion: object,
+        *,
+        field_name: str,
+        allow_missing: bool = False,
+    ) -> list:
+        choices = getattr(completion, "choices", None)
+        if choices is None:
+            if allow_missing:
+                logger.warning(
+                    "OpenAI-compatible payload missing %s; id=%s summary=%s",
+                    field_name,
+                    getattr(completion, "id", None),
+                    self._summarize_completion(completion),
+                )
+                return []
+            raise EmptyOrMalformedCompletionError(
+                f"OpenAI-compatible payload missing {field_name}; "
+                f"id={getattr(completion, 'id', None)} summary={self._summarize_completion(completion)}"
+            )
+        if isinstance(choices, list):
+            return choices
+        try:
+            return list(choices)
+        except TypeError as exc:
+            raise EmptyOrMalformedCompletionError(
+                f"OpenAI-compatible payload has invalid {field_name} type={type(choices).__name__}; "
+                f"id={getattr(completion, 'id', None)} summary={self._summarize_completion(completion)}"
+            ) from exc
+
+    def _is_retryable_provider_error(self, e: Exception) -> bool:
+        if isinstance(e, (EmptyOrMalformedCompletionError, httpx.TimeoutException, TimeoutError)):
+            return True
+        msg = str(e).lower()
+        return "timeout" in msg or "timed out" in msg
 
     async def _prepare_chat_payload(
         self,
@@ -473,6 +535,32 @@ class ProviderOpenAIOfficial(Provider):
             )
             payloads.pop("tools", None)
             return False, chosen_key, available_api_keys, payloads, context_query, None
+        if self._is_retryable_provider_error(e):
+            if retry_cnt < min(max_retries, _RETRYABLE_PROVIDER_ERROR_MAX_RETRIES) - 1:
+                backoff = _RETRYABLE_PROVIDER_ERROR_BACKOFF_SEC[
+                    min(retry_cnt, len(_RETRYABLE_PROVIDER_ERROR_BACKOFF_SEC) - 1)
+                ]
+                logger.warning(
+                    "OpenAI-compatible provider transient error; retrying %s/%s in %.1fs: %s",
+                    retry_cnt + 1,
+                    min(max_retries, _RETRYABLE_PROVIDER_ERROR_MAX_RETRIES),
+                    backoff,
+                    e,
+                )
+                await asyncio.sleep(backoff)
+                return (
+                    False,
+                    chosen_key,
+                    available_api_keys,
+                    payloads,
+                    context_query,
+                    func_tool,
+                )
+            logger.error(
+                "OpenAI-compatible provider transient error exhausted retries: %s",
+                e,
+            )
+            raise e
         # logger.error(f"发生了错误。Provider 配置如下: {self.provider_config}")
 
         if "tool" in str(e).lower() and "support" in str(e).lower():
