@@ -63,7 +63,18 @@ Please refer to the official documentation: [Deploy AstrBot with Docker](https:/
 #### uv Deployment
 
 ```bash
-uvx astrbot
+uv tool install astrbot
+astrbot
+```
+
+#### System Package Manager Installation
+
+##### Arch Linux
+
+```bash
+yay -S astrbot-git
+# or use paru
+paru -S astrbot-git
 ```
 
 #### BT-Panel Deployment
@@ -117,6 +128,16 @@ uv run main.py
 
 Or refer to the official documentation: [Deploy AstrBot from Source](https://astrbot.app/deploy/astrbot/cli.html).
 
+#### Установка через системный пакетный менеджер
+
+##### Arch Linux
+
+```bash
+yay -S astrbot-git
+# или используйте paru
+paru -S astrbot-git
+```
+
 #### Desktop Electron Build
 
 For desktop build steps (Electron packaging, `pnpm` workflow), see [`desktop/README.md`](desktop/README.md).
@@ -159,7 +180,7 @@ For desktop build steps (Electron packaging, `pnpm` workflow), see [`desktop/REA
 - [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_astrbot&referral_code=FV7DcGowN4hB5UuXKgpE74)
 - [302.AI](https://share.302.ai/rr1M3l)
 - [TokenPony](https://www.tokenpony.cn/3YPyf)
-- [SiliconFlow](https://docs.siliconflow.cn/cn/usecases/use-siliconcloud-in-astrbot)
+- [SiliconFlow](https://docs.siliconflow.cn/cn/usercases/use-siliconcloud-in-astrbot)
 - [PPIO Cloud](https://ppio.com/user/register?invited_by=AIOONE)
 - ModelScope
 - OneAPI
@@ -249,9 +270,9 @@ Additionally, the birth of this project would not have been possible without the
 
 </div>
 
-</details>
-
 <div align="center">
+
+_Companionship and capability should never be at odds. What we aim to create is a robot that can understand emotions, provide genuine companionship, and reliably accomplish tasks._
 
 _私は、高性能ですから!_
 

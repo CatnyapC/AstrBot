@@ -11,7 +11,7 @@ declare global {
         restarting: boolean;
         canManage: boolean;
       }>;
-      restartBackend: () => Promise<{
+      restartBackend: (authToken?: string | null) => Promise<{
         ok: boolean;
         reason: string | null;
       }>;
@@ -19,6 +19,7 @@ declare global {
         ok: boolean;
         reason: string | null;
       }>;
+      onTrayRestartBackend?: (callback: () => void) => () => void;
     };
   }
 }

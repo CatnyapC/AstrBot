@@ -36,7 +36,7 @@ let backendManager = null;
 
 app.commandLine.appendSwitch('disable-http-cache');
 
-const { logElectron } = createElectronLogger({
+const { logElectron, flushElectron } = createElectronLogger({
   app,
   getRootDir: () => (backendManager ? backendManager.getRootDir() : null),
 });
@@ -116,6 +116,29 @@ function updateTrayMenu() {
         }
       },
     },
+    {
+      label: shellTexts.trayRestartBackend,
+      click: async () => {
+        if (!backendManager) {
+          return;
+        }
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          showWindow();
+          const currentUrl = mainWindow.webContents.getURL();
+          if (currentUrl.startsWith(backendManager.getBackendUrl())) {
+            mainWindow.webContents.send('astrbot-desktop:tray-restart-backend');
+            return;
+          }
+        }
+
+        const result = await backendManager.restartBackend();
+        if (!result.ok) {
+          logElectron(
+            `Tray restart backend fallback failed: ${result.reason || 'unknown reason'}`,
+          );
+        }
+      },
+    },
     { type: 'separator' },
     {
       label: shellTexts.trayQuit,
@@ -161,6 +184,16 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
+      ...(isMac
+        ? {
+            defaultFontFamily: {
+              standard: 'PingFang SC',
+              sansSerif: 'PingFang SC',
+              serif: 'Songti SC',
+              monospace: 'SF Mono',
+            },
+          }
+        : {}),
     },
   });
 
@@ -235,8 +268,8 @@ function registerIpcHandlers() {
     return backendManager.getState();
   });
 
-  ipcMain.handle('astrbot-desktop:restart-backend', async () => {
-    return backendManager.restartBackend();
+  ipcMain.handle('astrbot-desktop:restart-backend', async (_event, authToken) => {
+    return backendManager.restartBackend(authToken);
   });
 
   ipcMain.handle('astrbot-desktop:stop-backend', async () => {
@@ -348,16 +381,18 @@ app.on('before-quit', (event) => {
     .persistLocaleFromDashboard(mainWindow, backendManager.getBackendUrl())
     .catch(() => {})
     .then(() =>
-      backendManager.stopManagedBackend().catch((error) => {
-        logElectron(
-          `stopBackend failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
+      backendManager.stopAnyBackend().then((result) => {
+        if (!result.ok) {
+          logElectron(`stopBackend failed: ${result.reason || 'unknown reason'}`);
+        }
       }),
     )
-    .finally(() => {
+    .finally(async () => {
       logElectron('Backend stop finished, exiting app.');
+      await Promise.allSettled([
+        flushElectron(),
+        backendManager ? backendManager.flushLogs() : Promise.resolve(),
+      ]);
       app.exit(0);
     });
 });

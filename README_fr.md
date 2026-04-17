@@ -61,7 +61,18 @@ Veuillez consulter la documentation officielle : [Déployer AstrBot avec Docker]
 #### Déploiement uv
 
 ```bash
-uvx astrbot
+uv tool install astrbot
+astrbot
+```
+
+#### Installation via le gestionnaire de paquets du système
+
+##### Arch Linux
+
+```bash
+yay -S astrbot-git
+# ou utiliser paru
+paru -S astrbot-git
 ```
 
 #### Déploiement BT-Panel
@@ -115,6 +126,16 @@ uv run main.py
 
 Ou consultez la documentation officielle : [Déployer AstrBot depuis les sources](https://astrbot.app/deploy/astrbot/cli.html).
 
+#### Установка через системный пакетный менеджер
+
+##### Arch Linux
+
+```bash
+yay -S astrbot-git
+# или используйте paru
+paru -S astrbot-git
+```
+
 ## Plateformes de messagerie prises en charge
 
 **Maintenues officiellement**
@@ -153,7 +174,7 @@ Ou consultez la documentation officielle : [Déployer AstrBot depuis les sources
 - [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_astrbot&referral_code=FV7DcGowN4hB5UuXKgpE74)
 - [302.AI](https://share.302.ai/rr1M3l)
 - [TokenPony](https://www.tokenpony.cn/3YPyf)
-- [SiliconFlow](https://docs.siliconflow.cn/cn/usecases/use-siliconcloud-in-astrbot)
+- [SiliconFlow](https://docs.siliconflow.cn/cn/usercases/use-siliconcloud-in-astrbot)
 - [PPIO Cloud](https://ppio.com/user/register?invited_by=AIOONE)
 - ModelScope
 - OneAPI
@@ -241,7 +262,12 @@ De plus, la naissance de ce projet n'aurait pas été possible sans l'aide des p
 
 </div>
 
-</details>
+<div align="center">
+
+_La compagnie et la capacité ne devraient jamais être des opposés. Nous souhaitons créer un robot capable à la fois de comprendre les émotions, d'offrir de la présence, et d'accomplir des tâches de manière fiable._
 
 _私は、高性能ですから!_
 
+<img src="https://files.astrbot.app/watashiwa-koseino-desukara.gif" width="100"/>
+
+</div>

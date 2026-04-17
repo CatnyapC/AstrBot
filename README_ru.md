@@ -61,7 +61,8 @@ AstrBot — это универсальная платформа Agent-чатб�
 #### Развёртывание uv
 
 ```bash
-uvx astrbot
+uv tool install astrbot
+astrbot
 ```
 
 #### Развёртывание BT-Panel
@@ -115,6 +116,16 @@ uv run main.py
 
 Или см. официальную документацию: [Развёртывание AstrBot из исходного кода](https://astrbot.app/deploy/astrbot/cli.html).
 
+#### Установка через системный пакетный менеджер
+
+##### Arch Linux
+
+```bash
+yay -S astrbot-git
+# или используйте paru
+paru -S astrbot-git
+```
+
 ## Поддерживаемые платформы обмена сообщениями
 
 **Официально поддерживаемые**
@@ -153,7 +164,7 @@ uv run main.py
 - [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_astrbot&referral_code=FV7DcGowN4hB5UuXKgpE74)
 - [302.AI](https://share.302.ai/rr1M3l)
 - [TokenPony](https://www.tokenpony.cn/3YPyf)
-- [SiliconFlow](https://docs.siliconflow.cn/cn/usecases/use-siliconcloud-in-astrbot)
+- [SiliconFlow](https://docs.siliconflow.cn/cn/usercases/use-siliconcloud-in-astrbot)
 - [PPIO Cloud](https://ppio.com/user/register?invited_by=AIOONE)
 - ModelScope
 - OneAPI
@@ -235,13 +246,19 @@ pre-commit install
 > [!TIP]
 > Если этот проект помог вам в жизни или работе, или если вас интересует его будущее развитие, пожалуйста, поставьте проекту звезду. Это движущая сила поддержки этого проекта с открытым исходным кодом <3
 
+
 <div align="center">
 
 [![Star History Chart](https://api.star-history.com/svg?repos=astrbotdevs/astrbot&type=Date)](https://star-history.com/#astrbotdevs/astrbot&Date)
 
 </div>
 
-</details>
+<div align="center">
+
+_Сопровождение и способности никогда не должны быть противоположностями. Мы стремимся создать робота, который сможет как понимать эмоции, оказывать душевную поддержку, так и надёжно выполнять работу._
 
 _私は、高性能ですから!_
 
+<img src="https://files.astrbot.app/watashiwa-koseino-desukara.gif" width="100"/>
+
+</div>

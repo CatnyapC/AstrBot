@@ -149,6 +149,7 @@ class InternalAgentSubStage(Stage):
 
             logger.debug("ready to request llm provider")
 
+            await event.send_typing()
             await call_event_hook(event, EventType.OnWaitingLLMRequestEvent)
 
             async with session_lock_manager.acquire_lock(event.unified_msg_origin):
@@ -190,6 +191,8 @@ class InternalAgentSubStage(Stage):
                 )
 
                 if await call_event_hook(event, EventType.OnLLMRequestEvent, req):
+                    if reset_coro:
+                        reset_coro.close()
                     return
 
                 # apply reset

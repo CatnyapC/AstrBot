@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 import uuid
 from collections.abc import Awaitable, Callable
@@ -24,6 +25,8 @@ from astrbot.api.platform import (
 )
 from astrbot.core import logger
 from astrbot.core.platform.astr_message_event import MessageSesion
+from astrbot.core.utils.astrbot_path import get_astrbot_temp_path
+from astrbot.core.utils.media_utils import convert_audio_to_wav
 from astrbot.core.utils.webhook_utils import log_webhook_info
 
 from .weixin_offacc_event import WeixinOfficialAccountPlatformEvent
@@ -289,19 +292,20 @@ class WeixinOfficialAccountPlatformAdapter(Platform):
                 self.client.media.download,
                 msg.media_id,
             )
-            path = f"data/temp/wecom_{msg.media_id}.amr"
+            temp_dir = get_astrbot_temp_path()
+            path = os.path.join(temp_dir, f"weixin_offacc_{msg.media_id}.amr")
             with open(path, "wb") as f:
                 f.write(resp.content)
 
             try:
-                from pydub import AudioSegment
-
-                path_wav = f"data/temp/wecom_{msg.media_id}.wav"
-                audio = AudioSegment.from_file(path)
-                audio.export(path_wav, format="wav")
+                path_wav = os.path.join(
+                    temp_dir,
+                    f"weixin_offacc_{msg.media_id}.wav",
+                )
+                path_wav = await convert_audio_to_wav(path, path_wav)
             except Exception as e:
                 logger.error(
-                    f"转换音频失败: {e}。如果没有安装 pydub 和 ffmpeg 请先安装。",
+                    f"转换音频失败: {e}。如果没有安装 ffmpeg 请先安装。",
                 )
                 path_wav = path
                 return
