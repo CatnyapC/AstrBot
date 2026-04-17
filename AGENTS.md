@@ -30,6 +30,17 @@ Runs on `http://localhost:3000` by default.
 7. Group attribution exists to map messages about others to their targets (not the sender); if it fails, we fall back to the sender to keep updates safe.
 8. Auto-impression Phase1/Phase2 now build `known_user_ids` strictly from the current batch: speakers, `@`/`reply_to` targets, and alias_map-resolved tokens in the message text. We no longer use `get_recent_profiles_by_group()` to supply known users.
 
+## Documentation Ownership
+
+- Agent-managed documentation folder: `docs/`.
+- On code change/edit, update existing docs or add new docs under the matching typed subfolder.
+- Do not maintain per-file doc inventory in `AGENTS.MD`.
+- Documentation lookup flow:
+  1. Open `docs/README.md`.
+  2. Pick the matching category/subcategory.
+  3. Open that folder's `README.md`.
+  4. Only then open the concrete docs needed for the current task.
+
 ## PR instructions
 
 1. Title format: use conventional commit messages
