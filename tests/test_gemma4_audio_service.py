@@ -11,9 +11,10 @@ from scripts.gemma4_audio_service.engine import (
     Gemma4AudioEngine,
     ResolvedAudioInput,
     ServiceConfig,
+    _extend_short_wav_input,
     _normalize_local_audio_path,
-    _pad_short_wav_input,
     _read_wav_duration_seconds,
+    _trim_repeated_completion_tail,
     decode_base64_audio,
     extract_prompt_and_audio_from_messages,
     guess_suffix_from_format,
@@ -122,25 +123,35 @@ def test_build_messages_puts_text_before_audio(tmp_path):
     ]
 
 
-def test_pad_short_wav_input_extends_to_min_seconds(tmp_path):
+def test_extend_short_wav_input_pads_silence_to_min_seconds(tmp_path):
     audio_path = tmp_path / "short.wav"
     with wave.open(str(audio_path), "wb") as wav_file:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)
         wav_file.setframerate(16000)
-        wav_file.writeframes(b"\x00\x00" * 16000 * 2)
+        wav_file.writeframes(b"\x01\x00" * 16000 * 2)
 
-    padded = _pad_short_wav_input(
+    extended = _extend_short_wav_input(
         ResolvedAudioInput(path=str(audio_path), duration_seconds=2.0),
         min_seconds=4.0,
         temp_dir=str(tmp_path),
     )
 
     try:
-        assert padded.path != str(audio_path)
-        assert _read_wav_duration_seconds(padded.path) == pytest.approx(4.0)
+        assert extended.path != str(audio_path)
+        assert _read_wav_duration_seconds(extended.path) == pytest.approx(4.0)
+        with wave.open(extended.path, "rb") as wav_file:
+            raw = wav_file.readframes(wav_file.getnframes())
+        assert raw.endswith(b"\x00\x00" * 16)
+        assert extended.extended_from_seconds == pytest.approx(2.0)
     finally:
-        Path(padded.cleanup_path).unlink(missing_ok=True)
+        Path(extended.cleanup_path).unlink(missing_ok=True)
+
+
+def test_trim_repeated_completion_tail_after_extension():
+    text = "转写：狐米，你现在怎么样呀呀呀呀呀呀呀呀呀呀呀呀"
+
+    assert _trim_repeated_completion_tail(text) == "转写：狐米，你现在怎么样呀…"
 
 
 def test_guess_suffix_from_format_prefers_explicit_format():

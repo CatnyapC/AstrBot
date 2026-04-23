@@ -111,6 +111,6 @@ uvicorn scripts.gemma4_audio_service.app:app --host 127.0.0.1 --port 4010
 - If `MetalConfig` is unavailable, the service falls back to standard `mps` loading.
 - If `mps` loading fails with Metal buffer-size limits, the service can fall back to CPU when `GEMMA4_AUDIO_ALLOW_CPU_FALLBACK_ON_MPS_BUFFER_ERROR=true`.
 - Generation logs include WAV signal stats (`rms_dbfs`, `peak_dbfs`) and a truncated raw completion. If every answer says the audio is unclear, check whether `rms_dbfs` is near silence before changing token limits.
-- Very short WAV inputs are padded with trailing silence to `GEMMA4_AUDIO_MIN_SECONDS` seconds, default `4.0`, because Gemma 4 audio prompting is less reliable on about two-second clips.
+- Very short WAV inputs are extended with trailing silence to `GEMMA4_AUDIO_MIN_SECONDS` seconds, default `4.0`, because Gemma 4 audio prompting is less reliable on about two-second clips. When this path is used, the service trims obvious repeated tails in the decoded completion.
 - The service is intended for archive-side local media resolution, not for generic high-throughput serving.
 - `astrbot_plugin_thread_archive` can point `record_caption_service_url` at this service.

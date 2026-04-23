@@ -111,6 +111,7 @@ class ResolvedAudioInput:
     format_hint: str = "wav"
     mime_type: str = "audio/wav"
     duration_seconds: float | None = None
+    extended_from_seconds: float | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -378,7 +379,7 @@ def _inspect_wav_signal(path: str) -> dict[str, Any]:
     return stats
 
 
-def _pad_short_wav_input(
+def _extend_short_wav_input(
     audio: ResolvedAudioInput,
     *,
     min_seconds: float,
@@ -401,23 +402,62 @@ def _pad_short_wav_input(
     silence = b"\x00" * pad_frames * params.nchannels * params.sampwidth
     output_dir = Path(temp_dir.strip() or tempfile.gettempdir())
     output_dir.mkdir(parents=True, exist_ok=True)
-    padded_path = output_dir / f"gemma4-audio-padded-{uuid.uuid4().hex}.wav"
-    with wave.open(str(padded_path), "wb") as wav_file:
+    extended_path = output_dir / f"gemma4-audio-extended-{uuid.uuid4().hex}.wav"
+    with wave.open(str(extended_path), "wb") as wav_file:
         wav_file.setparams(params)
         wav_file.writeframes(frames + silence)
     logger.warning(
-        "Gemma4 audio padded short wav: original_seconds=%.2f padded_seconds=%.2f path=%s",
+        "Gemma4 audio extended short wav with trailing silence: original_seconds=%.2f extended_seconds=%.2f path=%s",
         duration,
         min_seconds,
-        padded_path,
+        extended_path,
     )
     return ResolvedAudioInput(
-        path=str(padded_path),
-        cleanup_path=str(padded_path),
+        path=str(extended_path),
+        cleanup_path=str(extended_path),
         format_hint=audio.format_hint,
         mime_type=audio.mime_type,
         duration_seconds=min_seconds,
+        extended_from_seconds=duration,
     )
+
+
+def _trim_repeated_completion_tail(text: str) -> str:
+    value = str(text or "").strip()
+    if not value:
+        return value
+
+    trimmed = _trim_repeated_suffix_unit(value)
+    if trimmed != value:
+        logger.warning(
+            "Gemma4 audio trimmed repeated completion tail: before=%r after=%r",
+            value[:500],
+            trimmed[:500],
+        )
+    return trimmed
+
+
+def _trim_repeated_suffix_unit(text: str) -> str:
+    value = text.rstrip()
+    punctuation = "，。！？!?、；;：:,. "
+    min_repeats = 6
+    max_unit_len = min(12, max(1, len(value) // min_repeats))
+    for unit_len in range(1, max_unit_len + 1):
+        unit = value[-unit_len:]
+        if not unit.strip(punctuation):
+            continue
+        count = 0
+        pos = len(value)
+        while pos >= unit_len and value[pos - unit_len : pos] == unit:
+            count += 1
+            pos -= unit_len
+        if count < min_repeats:
+            continue
+        prefix = value[: pos + unit_len].rstrip()
+        if prefix and prefix[-1] not in punctuation:
+            prefix += "…"
+        return prefix
+    return value
 
 
 class Gemma4AudioEngine:
@@ -450,7 +490,7 @@ class Gemma4AudioEngine:
         resolved_audio = self._resolve_audio_input(request)
         cleanup_paths = [resolved_audio.cleanup_path.strip()]
         try:
-            resolved_audio = _pad_short_wav_input(
+            resolved_audio = _extend_short_wav_input(
                 resolved_audio,
                 min_seconds=self.config.min_audio_seconds,
                 temp_dir=self.config.temp_dir,
@@ -479,6 +519,8 @@ class Gemma4AudioEngine:
                 top_p=request.top_p,
                 do_sample=request.do_sample,
             )
+            if resolved_audio.extended_from_seconds is not None:
+                text = _trim_repeated_completion_tail(text)
             inference_seconds = time.perf_counter() - inference_started
             return InferenceResult(
                 text=text.strip(),
