@@ -4,6 +4,7 @@ import base64
 import binascii
 import contextlib
 import logging
+import math
 import mimetypes
 import os
 import tempfile
@@ -13,17 +14,24 @@ import urllib.parse
 import urllib.request
 import uuid
 import wave
+from array import array
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 DEFAULT_AUDIO_PROMPT = (
-    "请用简洁中文概括这段语音/音频的主要内容、说话人情绪和关键环境音。"
-    "听不清请明确说明。"
+    "你正在处理一段已经附加到本请求中的音频。请先尽量逐字转写其中的人声，"
+    "再用一句简洁中文概括主要内容、说话人情绪和关键环境音。"
+    "背景线索：机器人/被呼唤对象名叫“狐米”。如果听到接近 hu mi、humi、胡米、呼米、狐咪、狐弥 的发音，"
+    "在转写和概括中统一写作“狐米”，不要写同音词或相似字。"
+    "即使音质差也要根据可听内容给出最可能转写；只有完全没有可辨认人声或全是噪声/静音时才回答听不清。"
+    "输出格式：转写：...；概括：...。"
+    "禁止要求补交材料。"
 )
 DEFAULT_MODEL_ID = "google/gemma-4-e2b-it"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 4010
+DEFAULT_MIN_AUDIO_SECONDS = 4.0
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +59,7 @@ class ServiceConfig:
     quant_group_size: int = 64
     default_prompt: str = DEFAULT_AUDIO_PROMPT
     default_max_new_tokens: int = 192
+    min_audio_seconds: float = DEFAULT_MIN_AUDIO_SECONDS
     attn_implementation: str = "sdpa"
     trust_remote_code: bool = False
     temp_dir: str = ""
@@ -65,7 +74,7 @@ class ServiceConfig:
             port=_parse_int_env("GEMMA4_AUDIO_PORT", DEFAULT_PORT, min_value=1),
             device=os.getenv("GEMMA4_AUDIO_DEVICE", "auto").strip().lower() or "auto",
             use_metal_quantization=_parse_bool_env(
-                "GEMMA4_AUDIO_USE_METAL_QUANTIZATION", True
+                "GEMMA4_AUDIO_USE_METAL_QUANTIZATION", False
             ),
             quant_bits=_parse_int_env(
                 "GEMMA4_AUDIO_QUANT_BITS", 4, allowed_values={2, 4, 8}
@@ -79,6 +88,9 @@ class ServiceConfig:
             or DEFAULT_AUDIO_PROMPT,
             default_max_new_tokens=_parse_int_env(
                 "GEMMA4_AUDIO_DEFAULT_MAX_NEW_TOKENS", 192, min_value=1
+            ),
+            min_audio_seconds=_parse_float_env(
+                "GEMMA4_AUDIO_MIN_SECONDS", DEFAULT_MIN_AUDIO_SECONDS, min_value=0.0
             ),
             attn_implementation=os.getenv(
                 "GEMMA4_AUDIO_ATTN_IMPLEMENTATION", "sdpa"
@@ -169,6 +181,22 @@ def _parse_int_env(
     return value
 
 
+def _parse_float_env(
+    name: str, default: float, *, min_value: float | None = None
+) -> float:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        value = default
+    else:
+        try:
+            value = float(raw)
+        except ValueError as exc:
+            raise ServiceConfigError(f"invalid float env: {name}={raw}") from exc
+    if min_value is not None and value < min_value:
+        raise ServiceConfigError(f"{name} must be >= {min_value}")
+    return value
+
+
 def decode_base64_audio(data: str) -> bytes:
     value = str(data or "").strip()
     if not value:
@@ -222,10 +250,16 @@ def extract_prompt_and_audio_from_messages(
                         text_parts.append(text)
                     continue
                 if block_type == "audio":
-                    value = str(block.get("audio") or block.get("url") or "").strip()
+                    value = str(
+                        block.get("path")
+                        or block.get("audio")
+                        or block.get("url")
+                        or ""
+                    ).strip()
                     if value:
-                        if _looks_like_path(value):
-                            audio_path = value
+                        local_path = _normalize_local_audio_path(value)
+                        if local_path:
+                            audio_path = local_path
                         else:
                             audio_url = value
                     continue
@@ -234,8 +268,9 @@ def extract_prompt_and_audio_from_messages(
                     if isinstance(audio_obj, dict):
                         value = str(audio_obj.get("url") or "").strip()
                         if value:
-                            if _looks_like_path(value):
-                                audio_path = value
+                            local_path = _normalize_local_audio_path(value)
+                            if local_path:
+                                audio_path = local_path
                             else:
                                 audio_url = value
                     continue
@@ -276,6 +311,115 @@ def _looks_like_path(value: str) -> bool:
     return Path(value).exists()
 
 
+def _normalize_local_audio_path(value: str) -> str:
+    if not _looks_like_path(value):
+        return ""
+    if value.startswith("file://"):
+        parsed = urllib.parse.urlparse(value)
+        return urllib.request.url2pathname(parsed.path)
+    return value
+
+
+def _shape_of(value: Any) -> str:
+    shape = getattr(value, "shape", None)
+    if shape is None:
+        return ""
+    return "x".join(str(part) for part in shape)
+
+
+def _inspect_wav_signal(path: str) -> dict[str, Any]:
+    if Path(path).suffix.lower() != ".wav":
+        return {}
+    try:
+        with wave.open(path, "rb") as wav_file:
+            channels = wav_file.getnchannels()
+            sample_width = wav_file.getsampwidth()
+            sample_rate = wav_file.getframerate()
+            frames = wav_file.getnframes()
+            raw = wav_file.readframes(frames)
+    except Exception:
+        return {}
+
+    stats: dict[str, Any] = {
+        "channels": channels,
+        "sample_width": sample_width,
+        "sample_rate": sample_rate,
+        "frames": frames,
+    }
+    if not raw:
+        return stats
+
+    samples: list[int]
+    full_scale: float
+    if sample_width == 1:
+        samples = [byte - 128 for byte in raw]
+        full_scale = 128.0
+    elif sample_width == 2:
+        values = array("h")
+        values.frombytes(raw)
+        samples = list(values)
+        full_scale = 32768.0
+    elif sample_width == 4:
+        values = array("i")
+        values.frombytes(raw)
+        samples = list(values)
+        full_scale = 2147483648.0
+    else:
+        return stats
+
+    if not samples:
+        return stats
+    peak = max(abs(sample) for sample in samples)
+    rms = math.sqrt(
+        sum(float(sample) * float(sample) for sample in samples) / len(samples)
+    )
+    stats["peak_dbfs"] = round(20 * math.log10(max(peak, 1) / full_scale), 1)
+    stats["rms_dbfs"] = round(20 * math.log10(max(rms, 1.0) / full_scale), 1)
+    return stats
+
+
+def _pad_short_wav_input(
+    audio: ResolvedAudioInput,
+    *,
+    min_seconds: float,
+    temp_dir: str,
+) -> ResolvedAudioInput:
+    if min_seconds <= 0 or Path(audio.path).suffix.lower() != ".wav":
+        return audio
+    try:
+        with wave.open(audio.path, "rb") as wav_file:
+            params = wav_file.getparams()
+            frames = wav_file.readframes(params.nframes)
+    except Exception:
+        return audio
+    if params.framerate <= 0:
+        return audio
+    duration = params.nframes / float(params.framerate)
+    if duration >= min_seconds:
+        return audio
+    pad_frames = max(1, math.ceil((min_seconds - duration) * params.framerate))
+    silence = b"\x00" * pad_frames * params.nchannels * params.sampwidth
+    output_dir = Path(temp_dir.strip() or tempfile.gettempdir())
+    output_dir.mkdir(parents=True, exist_ok=True)
+    padded_path = output_dir / f"gemma4-audio-padded-{uuid.uuid4().hex}.wav"
+    with wave.open(str(padded_path), "wb") as wav_file:
+        wav_file.setparams(params)
+        wav_file.writeframes(frames + silence)
+    logger.warning(
+        "Gemma4 audio padded short wav: original_seconds=%.2f padded_seconds=%.2f path=%s",
+        duration,
+        min_seconds,
+        padded_path,
+    )
+    return ResolvedAudioInput(
+        path=str(padded_path),
+        cleanup_path=str(padded_path),
+        format_hint=audio.format_hint,
+        mime_type=audio.mime_type,
+        duration_seconds=min_seconds,
+    )
+
+
 class Gemma4AudioEngine:
     def __init__(self, config: ServiceConfig) -> None:
         self.config = config
@@ -304,13 +448,25 @@ class Gemma4AudioEngine:
     def analyze(self, request: InferenceRequest) -> InferenceResult:
         prompt = str(request.prompt or "").strip() or self.config.default_prompt
         resolved_audio = self._resolve_audio_input(request)
+        cleanup_paths = [resolved_audio.cleanup_path.strip()]
         try:
+            resolved_audio = _pad_short_wav_input(
+                resolved_audio,
+                min_seconds=self.config.min_audio_seconds,
+                temp_dir=self.config.temp_dir,
+            )
+            cleanup_paths.append(resolved_audio.cleanup_path.strip())
             self._ensure_loaded()
+            audio_signal = _inspect_wav_signal(resolved_audio.path)
             logger.warning(
-                "Gemma4 audio inference start: device=%s audio=%s duration=%s max_new_tokens=%s",
+                "Gemma4 audio inference start: device=%s audio=%s duration=%s rate=%s channels=%s rms_dbfs=%s peak_dbfs=%s max_new_tokens=%s",
                 self._device,
                 resolved_audio.path,
                 resolved_audio.duration_seconds,
+                audio_signal.get("sample_rate", ""),
+                audio_signal.get("channels", ""),
+                audio_signal.get("rms_dbfs", ""),
+                audio_signal.get("peak_dbfs", ""),
                 request.max_new_tokens or self.config.default_max_new_tokens,
             )
             inference_started = time.perf_counter()
@@ -335,8 +491,7 @@ class Gemma4AudioEngine:
                 quantization=self._quantization,
             )
         finally:
-            cleanup_path = resolved_audio.cleanup_path.strip()
-            if cleanup_path:
+            for cleanup_path in {path for path in cleanup_paths if path}:
                 with contextlib.suppress(Exception):
                     Path(cleanup_path).unlink(missing_ok=True)
 
@@ -389,7 +544,10 @@ class Gemma4AudioEngine:
         if device == "mps":
             kwargs["torch_dtype"] = torch.float16
             kwargs["attn_implementation"] = self.config.attn_implementation
-            if self.config.use_metal_quantization and not self._disable_metal_quantization_runtime:
+            if (
+                self.config.use_metal_quantization
+                and not self._disable_metal_quantization_runtime
+            ):
                 try:
                     from transformers import MetalConfig
 
@@ -469,15 +627,7 @@ class Gemma4AudioEngine:
     ) -> str:
         import torch
 
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "audio", "audio": audio_path},
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ]
+        messages = self._build_messages(prompt=prompt, audio_path=audio_path)
         inputs = self._processor.apply_chat_template(
             messages,
             tokenize=True,
@@ -485,14 +635,18 @@ class Gemma4AudioEngine:
             return_tensors="pt",
             add_generation_prompt=True,
         )
-        moved_inputs = {
-            key: value.to(self._device) if hasattr(value, "to") else value
-            for key, value in dict(inputs).items()
-        }
+        moved_inputs = self._move_processor_inputs(inputs, torch)
         input_len = 0
         input_ids = moved_inputs.get("input_ids")
         if input_ids is not None and hasattr(input_ids, "shape"):
             input_len = int(input_ids.shape[-1])
+        input_features_shape = _shape_of(moved_inputs.get("input_features"))
+        input_features_mask_shape = _shape_of(moved_inputs.get("input_features_mask"))
+        if not input_features_shape:
+            logger.warning(
+                "Gemma4 audio processor produced no input_features: keys=%s",
+                sorted(moved_inputs.keys()),
+            )
         generation_kwargs = {
             "max_new_tokens": max(1, int(max_new_tokens)),
             "do_sample": bool(do_sample or temperature > 0.0),
@@ -501,9 +655,11 @@ class Gemma4AudioEngine:
             generation_kwargs["temperature"] = max(0.01, float(temperature or 0.0))
             generation_kwargs["top_p"] = min(1.0, max(0.01, float(top_p or 1.0)))
         logger.warning(
-            "Gemma4 audio generation begin: device=%s input_tokens=%s do_sample=%s max_new_tokens=%s",
+            "Gemma4 audio generation begin: device=%s input_tokens=%s audio_features=%s audio_mask=%s do_sample=%s max_new_tokens=%s",
             self._device,
             input_len,
+            input_features_shape,
+            input_features_mask_shape,
             generation_kwargs["do_sample"],
             generation_kwargs["max_new_tokens"],
         )
@@ -521,19 +677,43 @@ class Gemma4AudioEngine:
                         exc,
                     )
                     self._reload_without_metal_quantization()
-                    moved_inputs = {
-                        key: value.to(self._device) if hasattr(value, "to") else value
-                        for key, value in dict(inputs).items()
-                    }
+                    moved_inputs = self._move_processor_inputs(inputs, torch)
                     output = self._model.generate(**moved_inputs, **generation_kwargs)
                 else:
                     raise
         logger.warning("Gemma4 audio generation finished: device=%s", self._device)
-        return self._processor.decode(
+        completion = self._processor.decode(
             output[0][input_len:],
             skip_special_tokens=True,
             clean_up_tokenization_spaces=False,
         ).strip()
+        logger.warning("Gemma4 audio raw completion: %r", completion[:500])
+        return completion
+
+    def _build_messages(self, *, prompt: str, audio_path: str) -> list[dict[str, Any]]:
+        normalized_audio_path = str(Path(audio_path).expanduser().resolve())
+        return [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "audio", "path": normalized_audio_path},
+                ],
+            }
+        ]
+
+    def _move_processor_inputs(self, inputs, torch_module) -> dict[str, Any]:
+        model_dtype = getattr(self._model, "dtype", None)
+        moved_inputs: dict[str, Any] = {}
+        for key, value in dict(inputs).items():
+            if not hasattr(value, "to"):
+                moved_inputs[key] = value
+                continue
+            if model_dtype is not None and torch_module.is_floating_point(value):
+                moved_inputs[key] = value.to(device=self._device, dtype=model_dtype)
+            else:
+                moved_inputs[key] = value.to(device=self._device)
+        return moved_inputs
 
     def _reload_without_metal_quantization(self) -> None:
         with self._lock:

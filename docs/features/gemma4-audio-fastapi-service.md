@@ -75,7 +75,10 @@ Exactly one of these fields is required:
 The compatibility endpoint also accepts:
 
 - `{"type":"audio","audio":"/absolute/path.wav"}`
+- `{"type":"audio","path":"/absolute/path.wav"}`
 - `{"type":"audio_url","audio_url":{"url":"file:///absolute/path.wav"}}`
+
+Local files are normalized to absolute `path` audio blocks before calling the Transformers chat template. In the pinned runtime, `file://` audio URLs can be handed to the feature extractor as text instead of a waveform.
 
 ## Install
 
@@ -107,5 +110,7 @@ uvicorn scripts.gemma4_audio_service.app:app --host 127.0.0.1 --port 4010
 - On current Apple Silicon + `torch 2.11`, keeping Metal quantization off is the safer default.
 - If `MetalConfig` is unavailable, the service falls back to standard `mps` loading.
 - If `mps` loading fails with Metal buffer-size limits, the service can fall back to CPU when `GEMMA4_AUDIO_ALLOW_CPU_FALLBACK_ON_MPS_BUFFER_ERROR=true`.
+- Generation logs include WAV signal stats (`rms_dbfs`, `peak_dbfs`) and a truncated raw completion. If every answer says the audio is unclear, check whether `rms_dbfs` is near silence before changing token limits.
+- Very short WAV inputs are padded with trailing silence to `GEMMA4_AUDIO_MIN_SECONDS` seconds, default `4.0`, because Gemma 4 audio prompting is less reliable on about two-second clips.
 - The service is intended for archive-side local media resolution, not for generic high-throughput serving.
 - `astrbot_plugin_thread_archive` can point `record_caption_service_url` at this service.
