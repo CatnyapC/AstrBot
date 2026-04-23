@@ -257,14 +257,14 @@ class ResultDecorateStage(Stage):
                 event.unified_msg_origin,
             )
 
-            should_tts = (
+            tts_enabled_for_result = (
                 bool(self.ctx.astrbot_config["provider_tts_settings"]["enable"])
                 and result.is_llm_result()
                 and await SessionServiceManager.should_process_tts_request(event)
                 and random.random() <= self.tts_trigger_probability
-                and tts_provider
             )
-            if should_tts and not tts_provider:
+            should_tts = tts_enabled_for_result and tts_provider
+            if tts_enabled_for_result and not tts_provider:
                 logger.warning(
                     f"会话 {event.unified_msg_origin} 未配置文本转语音模型。",
                 )

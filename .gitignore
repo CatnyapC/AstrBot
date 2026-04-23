@@ -50,6 +50,7 @@ yarn.lock
 # AstrBot specific
 .astrbot
 astrbot.lock
+.local-services/
 
 # Other
 chroma
