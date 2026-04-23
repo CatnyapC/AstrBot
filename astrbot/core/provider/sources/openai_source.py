@@ -391,7 +391,9 @@ class ProviderOpenAIOfficial(Provider):
             ) from exc
 
     def _is_retryable_provider_error(self, e: Exception) -> bool:
-        if isinstance(e, (EmptyOrMalformedCompletionError, httpx.TimeoutException, TimeoutError)):
+        if isinstance(
+            e, (EmptyOrMalformedCompletionError, httpx.TimeoutException, TimeoutError)
+        ):
             return True
         msg = str(e).lower()
         return "timeout" in msg or "timed out" in msg
