@@ -3,6 +3,7 @@ import json
 import re
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -221,6 +222,32 @@ class ProviderGSVTTS(TTSProvider):
         if missing:
             raise ValueError(
                 "[GSV TTS] Missing required GPT-SoVITS params: " + ", ".join(missing),
+            )
+        if self._is_local_api_base():
+            self._validate_local_audio_path(
+                str(params["ref_audio_path"]),
+                field_name="ref_audio_path",
+            )
+            for path in params.get("aux_ref_audio_paths", []):
+                self._validate_local_audio_path(
+                    str(path),
+                    field_name="aux_ref_audio_paths",
+                )
+
+    def _is_local_api_base(self) -> bool:
+        host = urlparse(self.api_base).hostname
+        return host in {"localhost", "127.0.0.1", "::1"}
+
+    @staticmethod
+    def _validate_local_audio_path(path: str, *, field_name: str) -> None:
+        local_path = Path(path).expanduser()
+        if not local_path.is_absolute():
+            raise ValueError(
+                f"[GSV TTS] {field_name} must be an absolute local path: {path}",
+            )
+        if not local_path.is_file():
+            raise ValueError(
+                f"[GSV TTS] {field_name} does not exist or is not a file: {path}",
             )
 
     async def terminate(self) -> None:

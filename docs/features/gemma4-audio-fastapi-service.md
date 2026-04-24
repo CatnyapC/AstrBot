@@ -37,7 +37,7 @@ Path:
 {
   "prompt": "请概括这段语音",
   "audio_path": "/absolute/path/to/audio.wav",
-  "max_new_tokens": 192
+  "max_new_tokens": 96
 }
 ```
 
@@ -98,7 +98,9 @@ Recommended environment on macOS:
 ```bash
 export PYTORCH_ENABLE_MPS_FALLBACK=1
 export GEMMA4_AUDIO_MODEL_ID=google/gemma-4-e2b-it
+export GEMMA4_AUDIO_DEVICE=mps
 export GEMMA4_AUDIO_USE_METAL_QUANTIZATION=false
+export GEMMA4_AUDIO_ALLOW_CPU_FALLBACK_ON_MPS_BUFFER_ERROR=false
 export GEMMA4_AUDIO_QUANT_BITS=4
 export GEMMA4_AUDIO_QUANT_GROUP_SIZE=64
 uvicorn scripts.gemma4_audio_service.app:app --host 127.0.0.1 --port 4010
@@ -107,9 +109,10 @@ uvicorn scripts.gemma4_audio_service.app:app --host 127.0.0.1 --port 4010
 ## Notes
 
 - `MetalConfig` is attempted only on `mps`.
-- On current Apple Silicon + `torch 2.11`, keeping Metal quantization off is the safer default.
+- On current Apple Silicon + `torch 2.11`, keeping Metal quantization off is the safer default because the Hub kernel currently has no matching `torch 2.11` build variant.
+- Raw `E4B` can hit Apple Metal single-buffer limits on MPS. Use `google/gemma-4-e4b-it` only as an explicit override when slow CPU fallback is acceptable.
 - If `MetalConfig` is unavailable, the service falls back to standard `mps` loading.
-- If `mps` loading fails with Metal buffer-size limits, the service can fall back to CPU when `GEMMA4_AUDIO_ALLOW_CPU_FALLBACK_ON_MPS_BUFFER_ERROR=true`.
+- CPU fallback is off by default because local audio caption latency is too high for archive ingestion. Enable `GEMMA4_AUDIO_ALLOW_CPU_FALLBACK_ON_MPS_BUFFER_ERROR=true` only for debugging.
 - Generation logs include WAV signal stats (`rms_dbfs`, `peak_dbfs`) and a truncated raw completion. If every answer says the audio is unclear, check whether `rms_dbfs` is near silence before changing token limits.
 - Very short WAV inputs are extended with trailing silence to `GEMMA4_AUDIO_MIN_SECONDS` seconds, default `4.0`, because Gemma 4 audio prompting is less reliable on about two-second clips. When this path is used, the service trims obvious repeated tails in the decoded completion.
 - The service is intended for archive-side local media resolution, not for generic high-throughput serving.

@@ -58,12 +58,12 @@ class ServiceConfig:
     quant_bits: int = 4
     quant_group_size: int = 64
     default_prompt: str = DEFAULT_AUDIO_PROMPT
-    default_max_new_tokens: int = 192
+    default_max_new_tokens: int = 96
     min_audio_seconds: float = DEFAULT_MIN_AUDIO_SECONDS
     attn_implementation: str = "sdpa"
     trust_remote_code: bool = False
     temp_dir: str = ""
-    allow_cpu_fallback_on_mps_buffer_error: bool = True
+    allow_cpu_fallback_on_mps_buffer_error: bool = False
 
     @classmethod
     def from_env(cls) -> ServiceConfig:
@@ -87,7 +87,7 @@ class ServiceConfig:
             ).strip()
             or DEFAULT_AUDIO_PROMPT,
             default_max_new_tokens=_parse_int_env(
-                "GEMMA4_AUDIO_DEFAULT_MAX_NEW_TOKENS", 192, min_value=1
+                "GEMMA4_AUDIO_DEFAULT_MAX_NEW_TOKENS", 96, min_value=1
             ),
             min_audio_seconds=_parse_float_env(
                 "GEMMA4_AUDIO_MIN_SECONDS", DEFAULT_MIN_AUDIO_SECONDS, min_value=0.0
@@ -99,7 +99,7 @@ class ServiceConfig:
             trust_remote_code=_parse_bool_env("GEMMA4_AUDIO_TRUST_REMOTE_CODE", False),
             temp_dir=os.getenv("GEMMA4_AUDIO_TEMP_DIR", "").strip(),
             allow_cpu_fallback_on_mps_buffer_error=_parse_bool_env(
-                "GEMMA4_AUDIO_ALLOW_CPU_FALLBACK_ON_MPS_BUFFER_ERROR", True
+                "GEMMA4_AUDIO_ALLOW_CPU_FALLBACK_ON_MPS_BUFFER_ERROR", False
             ),
         )
 
@@ -121,7 +121,7 @@ class InferenceRequest:
     audio_url: str = ""
     audio_base64: str = ""
     audio_format: str = "wav"
-    max_new_tokens: int = 192
+    max_new_tokens: int = 96
     temperature: float = 0.0
     top_p: float = 1.0
     do_sample: bool = False

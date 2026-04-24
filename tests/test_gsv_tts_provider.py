@@ -97,6 +97,16 @@ def test_gsv_payload_preserves_types_and_omits_empty_values():
     assert "empty_optional" not in params
 
 
+def test_gsv_local_reference_path_validation_fails_before_request():
+    provider = ProviderGSVTTS(
+        _base_provider_config(api_base="http://127.0.0.1:9880"), {}
+    )
+    params = provider.build_synthesis_params("hello")
+
+    with pytest.raises(ValueError, match="ref_audio_path does not exist"):
+        provider._validate_synthesis_params(params)
+
+
 @pytest.mark.asyncio
 async def test_gsv_get_audio_requires_reference_fields():
     provider = ProviderGSVTTS(
@@ -116,7 +126,18 @@ async def test_gsv_get_audio_requires_reference_fields():
 
 @pytest.mark.asyncio
 async def test_gsv_get_audio_posts_json_and_writes_media_file(tmp_path):
-    provider = ProviderGSVTTS(_base_provider_config(), {})
+    ref_audio_path = tmp_path / "ref.wav"
+    ref_audio_path.write_bytes(b"ref")
+    provider = ProviderGSVTTS(
+        _base_provider_config(
+            gsv_default_parms={
+                **_base_provider_config()["gsv_default_parms"],
+                "gsv_ref_audio_path": str(ref_audio_path),
+                "gsv_aux_ref_audio_paths": "",
+            },
+        ),
+        {},
+    )
     session = _FakeSession(_FakeResponse(body=b"wav-data"))
     provider._session = session
 

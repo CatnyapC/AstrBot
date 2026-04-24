@@ -28,7 +28,7 @@ class AnalyzeAudioRequestModel(BaseModel):
     audio_url: str = ""
     audio_base64: str = ""
     audio_format: str = "wav"
-    max_new_tokens: int = 192
+    max_new_tokens: int = 96
     temperature: float = 0.0
     top_p: float = 1.0
     do_sample: bool = False
@@ -63,7 +63,7 @@ class AnalyzeAudioRequestModel(BaseModel):
 class ChatCompletionRequestModel(BaseModel):
     model: str | None = None
     messages: list[dict[str, Any]]
-    max_tokens: int = 192
+    max_tokens: int = 96
     temperature: float = 0.0
     top_p: float = 1.0
     stream: bool = False
@@ -120,7 +120,7 @@ def create_app() -> FastAPI:
     async def analyze_audio_file(
         file: UploadFile = File(...),
         prompt: str = DEFAULT_AUDIO_PROMPT,
-        max_new_tokens: int = 192,
+        max_new_tokens: int = 96,
         temperature: float = 0.0,
         top_p: float = 1.0,
         do_sample: bool = False,
