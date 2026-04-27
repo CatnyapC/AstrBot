@@ -30,16 +30,27 @@ Runs on `http://localhost:3000` by default.
 7. Group attribution exists to map messages about others to their targets (not the sender); if it fails, we fall back to the sender to keep updates safe.
 8. Auto-impression Phase1/Phase2 now build `known_user_ids` strictly from the current batch: speakers, `@`/`reply_to` targets, and alias_map-resolved tokens in the message text. We no longer use `get_recent_profiles_by_group()` to supply known users.
 
+## Plugin Workspace Routing
+
+When a change touches one of these plugin workspaces, read and follow that plugin's AGENTS.md before editing code or docs:
+
+- Thread Router: `data/plugins/astrbot_plugin_thread_router/` -> `data/plugins/astrbot_plugin_thread_router/AGENTS.md`
+- Auto Impression Card / AIC: `data/plugins/astrbot_plugin_auto_impression_card/` -> `data/plugins/astrbot_plugin_auto_impression_card/AGENTS.md`
+- Thread Archive: `data/plugins/astrbot_plugin_thread_archive/` -> `data/plugins/astrbot_plugin_thread_archive/AGENTS.md`
+
+For cross-plugin work, read every touched plugin's AGENTS.md and apply the stricter local rule where instructions differ. Root-level AstrBot instructions apply only after the relevant plugin instructions are loaded.
+
 ## Documentation Ownership
 
-- Agent-managed documentation folder: `docs/`.
-- On code change/edit, update existing docs or add new docs under the matching typed subfolder.
-- Do not maintain per-file doc inventory in `AGENTS.MD`.
-- Documentation lookup flow:
+- For plugin changes under `data/plugins/<plugin_name>/`, documentation ownership lives in that plugin workspace. Read the plugin's `AGENTS.md` first, then use that plugin's `docs/` lookup flow and update or add docs there.
+- Do not create or update root-level `docs/` for plugin work unless the change truly modifies AstrBot root/core behavior outside `data/plugins/`. This should be rare for current work.
+- For root/core AstrBot changes, use the root agent-managed documentation folder: `docs/`.
+- Root documentation lookup flow:
   1. Open `docs/README.md`.
   2. Pick the matching category/subcategory.
   3. Open that folder's `README.md`.
   4. Only then open the concrete docs needed for the current task.
+- Do not maintain per-file doc inventory in `AGENTS.MD`.
 
 ## PR instructions
 
