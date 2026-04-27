@@ -9,3 +9,4 @@ Use this folder for feature-level documentation.
 - `gpt-sovits-tts.md`: local GPT-SoVITS `api_v2.py` sidecar setup for AstrBot TTS.
 - `media-component-url-fallback.md`: incoming media components whose `file` only carries a platform filename now fall back to `url` for local download.
 - `thread-archive-media-caption-providers.md`: thread archive caption provider selection for image, video, and record media.
+- `webui-config-metadata-i18n.md`: why WebUI config metadata shows `[MISSING: features.config-metadata...]` and how to fix/rebuild served dashboard assets.

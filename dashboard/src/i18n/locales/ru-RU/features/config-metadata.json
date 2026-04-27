@@ -87,6 +87,7 @@
         },
         "knowledgebase": {
             "description": "База знаний",
+            "hint": "Внешний мозг AstrBot.",
             "kb_names": {
                 "description": "Список баз знаний",
                 "hint": "Поддерживается выбор нескольких баз"
@@ -106,6 +107,7 @@
         },
         "websearch": {
             "description": "Поиск в сети",
+            "hint": "Позволяет AstrBot получать доступ к интернету и узнавать актуальную информацию.",
             "provider_settings": {
                 "web_search": {
                     "description": "Включить поиск в сети"
@@ -160,7 +162,12 @@
             "provider_settings": {
                 "computer_use_runtime": {
                     "description": "Среда выполнения (Runtime)",
-                    "hint": "Среда, к которой разрешён доступ Agent: `local` — локальная среда компьютера, `sandbox` — изолированная песочница, `none` — запретить доступ к любым средам."
+                    "hint": "Среда, к которой разрешён доступ Agent: `local` — локальная среда компьютера, `sandbox` — изолированная песочница, `none` — запретить доступ к любым средам.",
+                    "labels": [
+                        "Нет",
+                        "Локально",
+                        "Песочница"
+                    ]
                 },
                 "computer_use_require_admin": {
                     "description": "Требовать права администратора AstrBot",
@@ -168,7 +175,11 @@
                 },
                 "sandbox": {
                     "booter": {
-                        "description": "Драйвер среды песочницы"
+                        "description": "Драйвер среды песочницы",
+                        "labels": [
+                            "Shipyard Neo",
+                            "Shipyard"
+                        ]
                     },
                     "shipyard_neo_endpoint": {
                         "description": "Эндпоинт Shipyard Neo API",

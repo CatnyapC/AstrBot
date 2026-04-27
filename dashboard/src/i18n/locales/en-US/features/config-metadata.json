@@ -87,6 +87,7 @@
     },
     "knowledgebase": {
       "description": "Knowledge Base",
+      "hint": "AstrBot's external brain.",
       "kb_names": {
         "description": "Knowledge Base List",
         "hint": "Supports multiple selections"
@@ -106,6 +107,7 @@
     },
     "websearch": {
       "description": "Web Search",
+      "hint": "Allows AstrBot to access the internet and learn current information.",
       "provider_settings": {
         "web_search": {
           "description": "Enable Web Search"
@@ -160,7 +162,12 @@
       "provider_settings": {
         "computer_use_runtime": {
           "description": "Computer Use Runtime",
-          "hint": "Environment allowed for Agent usage. `local` means the local machine environment, `sandbox` means the sandbox environment, and `none` means no environment is allowed."
+          "hint": "Environment allowed for Agent usage. `local` means the local machine environment, `sandbox` means the sandbox environment, and `none` means no environment is allowed.",
+          "labels": [
+            "None",
+            "Local",
+            "Sandbox"
+          ]
         },
         "computer_use_require_admin": {
           "description": "Require AstrBot Admin Permission",
@@ -168,7 +175,11 @@
         },
         "sandbox": {
           "booter": {
-            "description": "Sandbox Environment Driver"
+            "description": "Sandbox Environment Driver",
+            "labels": [
+              "Shipyard Neo",
+              "Shipyard"
+            ]
           },
           "shipyard_neo_endpoint": {
             "description": "Shipyard Neo API Endpoint",
