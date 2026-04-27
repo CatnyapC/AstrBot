@@ -15,7 +15,6 @@ class HandoffTool(FunctionTool, Generic[TContext]):
         tool_description: str | None = None,
         **kwargs,
     ) -> None:
-
         # Avoid passing duplicate `description` to the FunctionTool dataclass.
         # Some call sites (e.g. SubAgentOrchestrator) pass `description` via kwargs
         # to override what the main agent sees, while we also compute a default
@@ -44,9 +43,22 @@ class HandoffTool(FunctionTool, Generic[TContext]):
                     "type": "string",
                     "description": "The input to be handed off to another agent. This should be a clear and concise request or task.",
                 },
+                "image_urls": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional: An array of image sources (public HTTP URLs or local file paths) used as references in multimodal tasks such as video generation.",
+                },
+                "background_task": {
+                    "type": "boolean",
+                    "description": (
+                        "Defaults to false. "
+                        "Set to true if the task may take noticeable time, involves external tools, or the user does not need to wait. "
+                        "Use false only for quick, immediate tasks."
+                    ),
+                },
             },
         }
 
     def default_description(self, agent_name: str | None) -> str:
         agent_name = agent_name or "another"
-        return f"Delegate tasks to {self.name} agent to handle the request."
+        return f"Delegate tasks to {agent_name} agent to handle the request."

@@ -52,6 +52,9 @@ class AstrBotConfig(dict):
 
         with open(config_path, encoding="utf-8-sig") as f:
             conf_str = f.read()
+            # Handle UTF-8 BOM if present
+            if conf_str.startswith("\ufeff"):
+                conf_str = conf_str[1:]
             conf = json.loads(conf_str)
 
         # 检查配置完整性，并插入
@@ -175,4 +178,6 @@ class AstrBotConfig(dict):
         self[key] = value
 
     def check_exist(self) -> bool:
+        if not self.config_path:  # 加判空
+            return False
         return os.path.exists(self.config_path)

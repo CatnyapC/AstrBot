@@ -1,164 +1,225 @@
 <template>
-  <div class="subagent-page">
-    <div class="d-flex align-center justify-space-between mb-4">
-      <div>
-        <div class="d-flex align-center" style="gap: 8px;">
-          <h2 class="text-h5 font-weight-bold">{{ tm('page.title') }}</h2>
-          <v-chip size="x-small" color="orange-darken-2" variant="tonal" label>{{ tm('page.beta') }}</v-chip>
+  <div class="dashboard-page subagent-page" :class="{ 'is-dark': isDark }">
+    <v-container fluid class="dashboard-shell pa-4 pa-md-6">
+      <div class="dashboard-header">
+        <div class="dashboard-header-main">
+          <div class="dashboard-eyebrow">{{ tm('header.eyebrow') }}</div>
+          <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+            <h1 class="dashboard-title">{{ tm('page.title') }}</h1>
+            <v-chip size="x-small" color="orange-darken-2" variant="tonal" label>
+              {{ tm('page.beta') }}
+            </v-chip>
+          </div>
+          <p class="dashboard-subtitle">{{ tm('page.subtitle') }}</p>
         </div>
-        <div class="text-body-2 text-medium-emphasis">
-          {{ tm('page.subtitle') }}
+
+        <div class="dashboard-header-actions">
+          <v-btn variant="text" color="primary" prepend-icon="mdi-refresh" :loading="loading" @click="reload">
+            {{ tm('actions.refresh') }}
+          </v-btn>
+          <v-btn variant="tonal" color="primary" prepend-icon="mdi-content-save" :loading="saving" @click="save">
+            {{ tm('actions.save') }}
+          </v-btn>
         </div>
       </div>
 
-      <div class="d-flex align-center" style="gap: 8px;">
-        <v-btn variant="tonal" color="primary" :loading="loading" @click="reload">{{ tm('actions.refresh') }}</v-btn>
-        <v-btn variant="flat" color="primary" :loading="saving" @click="save">{{ tm('actions.save') }}</v-btn>
+      <div v-if="hasUnsavedChanges" class="unsaved-banner">
+        <v-icon size="18" color="warning">mdi-alert-circle-outline</v-icon>
+        <span>{{ tm('messages.unsavedChangesNotice') }}</span>
       </div>
-    </div>
 
-    <v-card class="rounded-lg" variant="flat">
-      <v-card-text>
-        <v-row>
-          <v-col cols="12" md="6">
+      <div class="dashboard-section-head">
+        <div>
+          <div class="dashboard-section-title">{{ tm('section.globalSettings') }}</div>
+          <div class="dashboard-section-subtitle">{{ mainStateDescription }}</div>
+        </div>
+      </div>
+
+      <div class="dashboard-form-grid global-settings-grid mb-5">
+        <div class="setting-card">
+          <div class="setting-card-head">
+            <div>
+              <div class="setting-title">{{ tm('switches.enable') }}</div>
+              <div class="setting-subtitle">{{ tm('switches.enableHint') }}</div>
+            </div>
             <v-switch
               v-model="cfg.main_enable"
-              :label="tm('switches.enable')"
-              inset
               color="primary"
               hide-details
+              inset
               density="comfortable"
             />
-          </v-col>
-          <v-col cols="12" md="6">
+          </div>
+        </div>
+
+        <div class="setting-card">
+          <div class="setting-card-head">
+            <div>
+              <div class="setting-title">{{ tm('switches.dedupe') }}</div>
+              <div class="setting-subtitle">{{ tm('switches.dedupeHint') }}</div>
+            </div>
             <v-switch
               v-model="cfg.remove_main_duplicate_tools"
               :disabled="!cfg.main_enable"
-              :label="tm('switches.dedupe')"
-              inset
               color="primary"
               hide-details
+              inset
               density="comfortable"
             />
-          </v-col>
-        </v-row>
-
-        <div class="text-caption text-medium-emphasis mt-1">
-          {{ mainStateDescription }}
+          </div>
         </div>
+      </div>
 
-        <div class="d-flex align-center justify-space-between mt-6 mb-2">
-          <div class="text-subtitle-1 font-weight-bold">{{ tm('section.title') }}</div>
-          <v-btn size="small" variant="tonal" color="primary" @click="addAgent">
+      <div class="dashboard-section-head">
+        <div>
+          <div class="dashboard-section-title">{{ tm('section.title') }}</div>
+          <div class="dashboard-section-subtitle">{{ tm('section.subtitle') }}</div>
+        </div>
+        <div class="dashboard-section-actions">
+          <div class="dashboard-pill">
+            <v-icon size="16">mdi-robot-outline</v-icon>
+            <span>{{ cfg.agents.length }}</span>
+          </div>
+          <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addAgent">
             {{ tm('actions.add') }}
           </v-btn>
         </div>
+      </div>
 
-        <v-expansion-panels variant="accordion" multiple>
-          <v-expansion-panel v-for="(agent, idx) in cfg.agents" :key="agent.__key">
-            <v-expansion-panel-title>
-              <div class="subagent-panel-title">
-                <div class="subagent-title-left">
-                  <v-chip :color="agent.enabled ? 'success' : 'grey'" size="small" variant="tonal">
-                    {{ agent.enabled ? tm('cards.statusEnabled') : tm('cards.statusDisabled') }}
-                  </v-chip>
+      <div v-if="cfg.agents.length === 0" class="dashboard-card dashboard-card--padded empty-card">
+        <div class="empty-wrap">
+          <v-icon icon="mdi-robot-off" size="60" class="mb-4" />
+          <div class="empty-title">{{ tm('empty.title') }}</div>
+          <div class="dashboard-empty mb-4">{{ tm('empty.subtitle') }}</div>
+          <v-btn color="primary" variant="tonal" @click="addAgent">
+            {{ tm('empty.action') }}
+          </v-btn>
+        </div>
+      </div>
 
-                  <div class="subagent-title-text">
-                    <div class="subagent-title-name">{{ agent.name || tm('cards.unnamed') }}</div>
-                    <div class="subagent-title-sub">
-                      {{ tm('cards.transferPrefix', { name: agent.name || '...' }) }}
-                    </div>
-                  </div>
-                </div>
-
-                <div class="subagent-title-right">
-                  <v-switch
-                    v-model="agent.enabled"
-                    inset
-                    color="primary"
-                    hide-details
-                    class="subagent-enabled-inline"
-                    @click.stop
-                  >
-                    <template #label>{{ tm('cards.switchLabel') }}</template>
-                  </v-switch>
-
-                  <v-btn size="small" variant="text" color="error" @click.stop="removeAgent(idx)">
-                    {{ tm('actions.delete') }}
-                  </v-btn>
-                </div>
+      <div v-else class="subagent-list">
+        <section
+          v-for="(agent, idx) in cfg.agents"
+          :key="agent.__key"
+          class="dashboard-card dashboard-card--padded agent-panel"
+        >
+          <div class="agent-summary">
+            <div class="agent-summary-main">
+              <div class="agent-summary-top">
+                <v-badge dot :color="agent.enabled ? 'success' : 'grey'" inline />
+                <span class="agent-name">{{ agent.name || tm('cards.unnamed') }}</span>
+                <v-chip size="x-small" variant="tonal" :color="agent.enabled ? 'success' : 'default'">
+                  {{ agent.enabled ? tm('cards.statusEnabled') : tm('cards.statusDisabled') }}
+                </v-chip>
               </div>
-            </v-expansion-panel-title>
+              <div class="agent-summary-desc">
+                {{ agent.public_description || tm('cards.noDescription') }}
+              </div>
+            </div>
+            <div class="agent-summary-actions">
+              <v-btn
+                :append-icon="isAgentExpanded(agent.__key) ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                variant="text"
+                color="default"
+                density="comfortable"
+                @click="toggleAgentExpanded(agent.__key)"
+              >
+                {{ isAgentExpanded(agent.__key) ? tm('actions.collapse') : tm('actions.expand') }}
+              </v-btn>
+              <v-switch
+                v-model="agent.enabled"
+                color="success"
+                hide-details
+                inset
+                density="compact"
+              />
+              <v-btn
+                icon="mdi-delete-outline"
+                variant="text"
+                color="error"
+                density="comfortable"
+                @click="removeAgent(idx)"
+              />
+            </div>
+          </div>
 
-            <v-expansion-panel-text>
-              <v-row class="subagent-grid">
-                <v-col cols="12" md="5">
+          <v-expand-transition>
+            <div v-show="isAgentExpanded(agent.__key)" class="agent-edit-grid">
+              <section class="dashboard-card dashboard-card--padded inner-card">
+                <div class="dashboard-section-title section-mini-title">{{ tm('section.agentSetup') }}</div>
+                <div class="dashboard-form-grid dashboard-form-grid--single">
                   <v-text-field
                     v-model="agent.name"
                     :label="tm('form.nameLabel')"
+                    :rules="[v => !!v || tm('messages.nameRequired'), v => /^[a-z][a-z0-9_]*$/.test(v) || tm('messages.namePattern')]"
                     variant="outlined"
                     density="comfortable"
-                    :hint="tm('form.nameHint')"
-                    persistent-hint
+                    hide-details="auto"
                   />
-                </v-col>
-                <v-col cols="12" md="7" class="subagent-actions">
-                  <ProviderSelector
-                    v-model="agent.provider_id"
-                    provider-type="chat_completion"
-                    :label="tm('form.providerLabel')"
-                    :hint="tm('form.providerHint')"
-                    persistent-hint
-                    clearable
-                    class="subagent-provider"
-                  />
-                </v-col>
-                <v-col cols="12" md="6">
-                  <v-autocomplete
-                    v-model="agent.persona_id"
-                    :items="personaOptions"
-                    item-title="title"
-                    item-value="value"
-                    :label="tm('form.personaLabel')"
-                    variant="outlined"
-                    density="comfortable"
-                    clearable
-                    :loading="personaLoading"
-                    :disabled="personaLoading"
-                    :hint="tm('form.personaHint')"
-                    persistent-hint
-                  />
-                </v-col>
 
-                <v-col cols="12" md="6">
-                  <v-text-field
+                  <div class="selector-wrap">
+                    <div class="selector-label">{{ tm('form.providerLabel') }}</div>
+                    <div class="selector-card">
+                      <ProviderSelector
+                        v-model="agent.provider_id"
+                        provider-type="chat_completion"
+                        variant="outlined"
+                        density="comfortable"
+                        clearable
+                      />
+                    </div>
+                  </div>
+
+                  <div class="selector-wrap">
+                    <div class="selector-label">{{ tm('form.personaLabel') }}</div>
+                    <div class="selector-card">
+                      <PersonaSelector v-model="agent.persona_id" />
+                    </div>
+                  </div>
+
+                  <v-textarea
                     v-model="agent.public_description"
                     :label="tm('form.descriptionLabel')"
                     variant="outlined"
                     density="comfortable"
-                    :hint="tm('form.descriptionHint')"
-                    persistent-hint
+                    auto-grow
+                    hide-details="auto"
                   />
-                </v-col>
-              </v-row>
+                </div>
+              </section>
 
-            </v-expansion-panel-text>
-          </v-expansion-panel>
-        </v-expansion-panels>
-      </v-card-text>
-    </v-card>
+              <section class="dashboard-card dashboard-card--padded inner-card">
+                <div class="dashboard-section-title section-mini-title">{{ tm('cards.personaPreview') }}</div>
+                <div class="dashboard-section-subtitle">{{ tm('cards.previewHint') }}</div>
+                <div class="persona-preview-wrap">
+                  <PersonaQuickPreview :model-value="agent.persona_id" class="h-100" />
+                </div>
+              </section>
+            </div>
+          </v-expand-transition>
+        </section>
+      </div>
 
-    <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="3000">
-      {{ snackbar.message }}
-    </v-snackbar>
+      <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="3000" location="top">
+        {{ snackbar.message }}
+        <template #actions>
+          <v-btn variant="text" @click="snackbar.show = false">{{ tm('actions.close') }}</v-btn>
+        </template>
+      </v-snackbar>
+    </v-container>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
 import axios from 'axios'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
+import { useTheme } from 'vuetify'
+import PersonaQuickPreview from '@/components/shared/PersonaQuickPreview.vue'
+import PersonaSelector from '@/components/shared/PersonaSelector.vue'
 import ProviderSelector from '@/components/shared/ProviderSelector.vue'
 import { useModuleI18n } from '@/i18n/composables'
+import { askForConfirmation, useConfirmDialog } from '@/utils/confirmDialog'
 
 type SubAgentItem = {
   __key: string
@@ -176,15 +237,21 @@ type SubAgentConfig = {
 }
 
 const { tm } = useModuleI18n('features/subagent')
+const theme = useTheme()
+const confirmDialog = useConfirmDialog()
 
 const loading = ref(false)
 const saving = ref(false)
+const isDark = computed(() => theme.global.current.value.dark)
 
 const snackbar = ref({
   show: false,
   message: '',
   color: 'success'
 })
+const expandedAgents = ref<Record<string, boolean>>({})
+const initialSnapshot = ref('')
+const hasLoaded = ref(false)
 
 function toast(message: string, color: 'success' | 'error' | 'warning' = 'success') {
   snackbar.value = { show: true, message, color }
@@ -196,36 +263,41 @@ const cfg = ref<SubAgentConfig>({
   agents: []
 })
 
-const personaOptions = ref<{ title: string; value: string }[]>([])
-const personaLoading = ref(false)
-
 const mainStateDescription = computed(() =>
   cfg.value.main_enable ? tm('description.enabled') : tm('description.disabled')
 )
+
+const hasUnsavedChanges = computed(() => hasLoaded.value && serializeConfig(cfg.value) !== initialSnapshot.value)
 
 function normalizeConfig(raw: any): SubAgentConfig {
   const main_enable = !!raw?.main_enable
   const remove_main_duplicate_tools = !!raw?.remove_main_duplicate_tools
   const agentsRaw = Array.isArray(raw?.agents) ? raw.agents : []
 
-  const agents: SubAgentItem[] = agentsRaw.map((a: any, i: number) => {
-    const name = (a?.name ?? '').toString()
-    const persona_id = (a?.persona_id ?? '').toString()
-    const public_description = (a?.public_description ?? '').toString()
-    const enabled = a?.enabled !== false
-    const provider_id = (a?.provider_id ?? undefined) as string | undefined
-
-    return {
-      __key: `${Date.now()}_${i}_${Math.random().toString(16).slice(2)}`,
-      name,
-      persona_id,
-      public_description,
-      enabled,
-      provider_id
-    }
-  })
+  const agents: SubAgentItem[] = agentsRaw.map((a: any, i: number) => ({
+    __key: `${Date.now()}_${i}_${Math.random().toString(16).slice(2)}`,
+    name: (a?.name ?? '').toString(),
+    persona_id: (a?.persona_id ?? '').toString(),
+    public_description: (a?.public_description ?? '').toString(),
+    enabled: a?.enabled !== false,
+    provider_id: (a?.provider_id ?? undefined) as string | undefined
+  }))
 
   return { main_enable, remove_main_duplicate_tools, agents }
+}
+
+function serializeConfig(config: SubAgentConfig): string {
+  return JSON.stringify({
+    main_enable: config.main_enable,
+    remove_main_duplicate_tools: config.remove_main_duplicate_tools,
+    agents: config.agents.map((agent) => ({
+      name: agent.name,
+      persona_id: agent.persona_id,
+      public_description: agent.public_description,
+      enabled: agent.enabled,
+      provider_id: agent.provider_id ?? null
+    }))
+  })
 }
 
 async function loadConfig() {
@@ -234,6 +306,9 @@ async function loadConfig() {
     const res = await axios.get('/api/subagent/config')
     if (res.data.status === 'ok') {
       cfg.value = normalizeConfig(res.data.data)
+      expandedAgents.value = Object.fromEntries(cfg.value.agents.map((agent) => [agent.__key, false]))
+      initialSnapshot.value = serializeConfig(cfg.value)
+      hasLoaded.value = true
     } else {
       toast(res.data.message || tm('messages.loadConfigFailed'), 'error')
     }
@@ -244,44 +319,40 @@ async function loadConfig() {
   }
 }
 
-async function loadPersonas() {
-  personaLoading.value = true
-  try {
-    const res = await axios.get('/api/persona/list')
-    if (res.data.status === 'ok') {
-      const list = Array.isArray(res.data.data) ? res.data.data : []
-      personaOptions.value = list.map((p: any) => ({
-        title: p.persona_id,
-        value: p.persona_id
-      }))
-    }
-  } catch (e: any) {
-    toast(e?.response?.data?.message || tm('messages.loadPersonaFailed'), 'error')
-  } finally {
-    personaLoading.value = false
-  }
-}
-
 function addAgent() {
+  const key = `${Date.now()}_${Math.random().toString(16).slice(2)}`
   cfg.value.agents.push({
-    __key: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    __key: key,
     name: '',
     persona_id: '',
     public_description: '',
     enabled: true,
     provider_id: undefined
   })
+  expandedAgents.value[key] = false
 }
 
 function removeAgent(idx: number) {
-  cfg.value.agents.splice(idx, 1)
+  const [removed] = cfg.value.agents.splice(idx, 1)
+  if (removed) {
+    delete expandedAgents.value[removed.__key]
+  }
+}
+
+function isAgentExpanded(key: string): boolean {
+  return expandedAgents.value[key] !== false
+}
+
+function toggleAgentExpanded(key: string) {
+  expandedAgents.value[key] = !isAgentExpanded(key)
 }
 
 function validateBeforeSave(): boolean {
   const nameRe = /^[a-z][a-z0-9_]{0,63}$/
   const seen = new Set<string>()
-  for (const a of cfg.value.agents) {
-    const name = (a.name || '').trim()
+
+  for (const agent of cfg.value.agents) {
+    const name = (agent.name || '').trim()
     if (!name) {
       toast(tm('messages.nameMissing'), 'warning')
       return false
@@ -295,11 +366,12 @@ function validateBeforeSave(): boolean {
       return false
     }
     seen.add(name)
-    if (!a.persona_id) {
+    if (!agent.persona_id) {
       toast(tm('messages.personaMissing', { name }), 'warning')
       return false
     }
   }
+
   return true
 }
 
@@ -310,17 +382,19 @@ async function save() {
     const payload = {
       main_enable: cfg.value.main_enable,
       remove_main_duplicate_tools: cfg.value.remove_main_duplicate_tools,
-      agents: cfg.value.agents.map((a) => ({
-        name: a.name,
-        persona_id: a.persona_id,
-        public_description: a.public_description,
-        enabled: a.enabled,
-        provider_id: a.provider_id
+      agents: cfg.value.agents.map((agent) => ({
+        name: agent.name,
+        persona_id: agent.persona_id,
+        public_description: agent.public_description,
+        enabled: agent.enabled,
+        provider_id: agent.provider_id
       }))
     }
 
     const res = await axios.post('/api/subagent/config', payload)
     if (res.data.status === 'ok') {
+      initialSnapshot.value = serializeConfig(cfg.value)
+      hasLoaded.value = true
       toast(res.data.message || tm('messages.saveSuccess'), 'success')
     } else {
       toast(res.data.message || tm('messages.saveFailed'), 'error')
@@ -333,111 +407,221 @@ async function save() {
 }
 
 async function reload() {
-  await Promise.all([loadConfig(), loadPersonas()])
+  if (hasUnsavedChanges.value) {
+    const confirmed = await askForConfirmation(
+      tm('messages.unsavedChangesReloadConfirm'),
+      confirmDialog
+    )
+    if (!confirmed) {
+      return
+    }
+  }
+  await loadConfig()
+}
+
+async function confirmLeaveIfNeeded(): Promise<boolean> {
+  if (!hasUnsavedChanges.value) {
+    return true
+  }
+
+  return askForConfirmation(
+    tm('messages.unsavedChangesLeaveConfirm'),
+    confirmDialog
+  )
+}
+
+function handleBeforeUnload(event: BeforeUnloadEvent) {
+  if (!hasUnsavedChanges.value) {
+    return
+  }
+
+  event.preventDefault()
+  event.returnValue = ''
 }
 
 onMounted(() => {
+  window.addEventListener('beforeunload', handleBeforeUnload)
   reload()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
+
+onBeforeRouteLeave(async () => {
+  return await confirmLeaveIfNeeded()
 })
 </script>
 
 <style scoped>
+@import '@/styles/dashboard-shell.css';
+
 .subagent-page {
-  padding: 20px;
-  padding-top: 8px;
   padding-bottom: 40px;
 }
 
-.subagent-panel-title {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.subagent-title-left {
-  min-width: 0;
+.unsaved-banner {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(var(--v-theme-warning), 0.22);
+  border-radius: 12px;
+  background: rgba(var(--v-theme-warning), 0.08);
+  color: var(--dashboard-text);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-.subagent-title-text {
-  min-width: 0;
+.setting-card {
+  border: 1px solid var(--dashboard-border);
+  border-radius: 14px;
+  padding: 18px;
+  background: rgba(var(--v-theme-primary), 0.02);
+}
+
+.setting-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.setting-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.setting-subtitle {
+  margin-top: 6px;
+  color: var(--dashboard-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.empty-card {
+  min-height: 280px;
+}
+
+.empty-wrap {
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--dashboard-muted);
 }
 
-.subagent-title-name {
-  font-weight: 600;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 520px;
+.empty-title {
+  font-size: 20px;
+  font-weight: 650;
+  color: var(--dashboard-text);
+  margin-bottom: 8px;
 }
 
-.subagent-title-sub {
-  font-size: 12px;
-  opacity: 0.72;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 520px;
+.subagent-list {
+  display: grid;
+  gap: 16px;
 }
 
+.agent-panel {
+  display: grid;
+  gap: 18px;
+}
 
-.subagent-title-right {
+.agent-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  width: 100%;
+}
+
+.agent-summary-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.agent-summary-top {
   display: flex;
   align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.agent-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.agent-summary-desc {
+  margin-top: 8px;
+  color: var(--dashboard-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.agent-summary-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.agent-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.inner-card {
+  min-width: 0;
+}
+
+.section-mini-title {
+  margin-bottom: 10px;
+}
+
+.selector-wrap {
+  display: grid;
   gap: 8px;
 }
 
-.subagent-actions {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
+.selector-label {
+  color: var(--dashboard-muted);
+  font-size: 13px;
+  font-weight: 500;
 }
 
-.subagent-provider {
-  flex: 1;
-  min-width: 260px;
+.selector-card {
+  border: 1px solid var(--dashboard-border);
+  border-radius: 12px;
+  padding: 14px;
+  background: transparent;
 }
 
-.subagent-enabled-inline {
-  margin-right: 2px;
+.persona-preview-wrap {
+  min-height: 320px;
 }
 
-/* Keep the switch compact inside the expansion-panel title row. */
-.subagent-enabled-inline :deep(.v-input__details) {
-  display: none;
+@media (max-width: 1080px) {
+  .agent-edit-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
-.subagent-enabled-inline :deep(.v-selection-control) {
-  min-height: 32px;
-}
-</style>
-
-<style>
-/*
-  Vuetify renders selected chips inside the input control and will grow the
-  field height as chips wrap. For subagent tool assignment this quickly becomes
-  unwieldy, so we cap the chip area height and allow scrolling.
-
-  Note: this must be a non-scoped style so it can reach Vuetify's internal
-  elements.
-*/
-.subagent-tools .v-field__input {
-  max-height: 160px;
-  overflow-y: auto;
-  align-content: flex-start;
-}
-
-/* Small breathing room so the scrollbar doesn't overlap chip close icons. */
-.subagent-tools .v-field__input {
-  padding-right: 6px;
+@media (max-width: 900px) {
+  .setting-card-head,
+  .agent-summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

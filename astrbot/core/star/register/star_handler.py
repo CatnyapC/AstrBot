@@ -11,7 +11,6 @@ from astrbot.core.agent.agent import Agent
 from astrbot.core.agent.handoff import HandoffTool
 from astrbot.core.agent.hooks import BaseAgentRunHooks
 from astrbot.core.agent.tool import FunctionTool
-from astrbot.core.astr_agent_context import AstrAgentContext
 from astrbot.core.message.message_event_result import MessageEventResult
 from astrbot.core.provider.func_tool_manager import PY_TO_JSON_TYPE, SUPPORTED_TYPES
 from astrbot.core.provider.register import llm_tools
@@ -285,7 +284,7 @@ def register_platform_adapter_type(
     return decorator
 
 
-def register_regex(regex: str, **kwargs):
+def register_regex(regex: str | re.Pattern, **kwargs):
     """注册一个 Regex"""
 
     def decorator(awaitable):
@@ -334,6 +333,58 @@ def register_on_platform_loaded(**kwargs):
 
     def decorator(awaitable):
         _ = get_handler_or_create(awaitable, EventType.OnPlatformLoadedEvent, **kwargs)
+        return awaitable
+
+    return decorator
+
+
+def register_on_plugin_error(**kwargs):
+    """当插件处理消息异常时触发。
+
+    Hook 参数:
+        event, plugin_name, handler_name, error, traceback_text
+
+    说明:
+        在 hook 中调用 `event.stop_event()` 可屏蔽默认报错回显，
+        并由插件自行决定是否转发到其他会话。
+    """
+
+    def decorator(awaitable):
+        _ = get_handler_or_create(awaitable, EventType.OnPluginErrorEvent, **kwargs)
+        return awaitable
+
+    return decorator
+
+
+def register_on_plugin_loaded(**kwargs):
+    """当有插件加载完成时
+
+    Hook 参数:
+        metadata
+
+    说明:
+        当有插件加载完成时，触发该事件并获取到该插件的元数据
+    """
+
+    def decorator(awaitable):
+        _ = get_handler_or_create(awaitable, EventType.OnPluginLoadedEvent, **kwargs)
+        return awaitable
+
+    return decorator
+
+
+def register_on_plugin_unloaded(**kwargs):
+    """当有插件卸载完成时
+
+    Hook 参数:
+        metadata
+
+    说明:
+        当有插件卸载完成时，触发该事件并获取到该插件的元数据
+    """
+
+    def decorator(awaitable):
+        _ = get_handler_or_create(awaitable, EventType.OnPluginUnloadedEvent, **kwargs)
         return awaitable
 
     return decorator
@@ -404,6 +455,64 @@ def register_on_llm_response(**kwargs):
 
     def decorator(awaitable):
         _ = get_handler_or_create(awaitable, EventType.OnLLMResponseEvent, **kwargs)
+        return awaitable
+
+    return decorator
+
+
+def register_on_agent_begin(**kwargs):
+    """当 Agent 开始运行时的事件
+
+    Examples:
+    ```py
+    from astrbot.core.agent.run_context import ContextWrapper
+    from astrbot.core.astr_agent_context import AstrAgentContext
+
+    @on_agent_begin()
+    async def test(
+        self,
+        event: AstrMessageEvent,
+        run_context: ContextWrapper[AstrAgentContext],
+    ) -> None:
+        ...
+    ```
+
+    请务必接收两个参数：event, run_context
+
+    """
+
+    def decorator(awaitable):
+        _ = get_handler_or_create(awaitable, EventType.OnAgentBeginEvent, **kwargs)
+        return awaitable
+
+    return decorator
+
+
+def register_on_agent_done(**kwargs):
+    """当 Agent 运行完成后的事件
+
+    Examples:
+    ```py
+    from astrbot.core.agent.run_context import ContextWrapper
+    from astrbot.core.astr_agent_context import AstrAgentContext
+    from astrbot.api.provider import LLMResponse
+
+    @on_agent_done()
+    async def test(
+        self,
+        event: AstrMessageEvent,
+        run_context: ContextWrapper[AstrAgentContext],
+        response: LLMResponse,
+    ) -> None:
+        ...
+    ```
+
+    请务必接收三个参数：event, run_context, response
+
+    """
+
+    def decorator(awaitable):
+        _ = get_handler_or_create(awaitable, EventType.OnAgentDoneEvent, **kwargs)
         return awaitable
 
     return decorator
@@ -565,7 +674,7 @@ class RegisteringAgent:
         kwargs["registering_agent"] = self
         return register_llm_tool(*args, **kwargs)
 
-    def __init__(self, agent: Agent[AstrAgentContext]) -> None:
+    def __init__(self, agent: Agent[Any]) -> None:
         self._agent = agent
 
 
@@ -573,7 +682,7 @@ def register_agent(
     name: str,
     instruction: str,
     tools: list[str | FunctionTool] | None = None,
-    run_hooks: BaseAgentRunHooks[AstrAgentContext] | None = None,
+    run_hooks: BaseAgentRunHooks[Any] | None = None,
 ):
     """注册一个 Agent
 
@@ -587,12 +696,12 @@ def register_agent(
     tools_ = tools or []
 
     def decorator(awaitable: Callable[..., Awaitable[Any]]):
-        AstrAgent = Agent[AstrAgentContext]
+        AstrAgent = Agent[Any]
         agent = AstrAgent(
             name=name,
             instructions=instruction,
             tools=tools_,
-            run_hooks=run_hooks or BaseAgentRunHooks[AstrAgentContext](),
+            run_hooks=run_hooks or BaseAgentRunHooks[Any](),
         )
         handoff_tool = HandoffTool(agent=agent)
         handoff_tool.handler = awaitable

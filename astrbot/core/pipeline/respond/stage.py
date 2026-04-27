@@ -28,11 +28,25 @@ class RespondStage(Stage):
         Comp.At: lambda comp: bool(comp.qq) or bool(comp.name),  # @
         Comp.Image: lambda comp: bool(comp.file),  # 图片
         Comp.Reply: lambda comp: bool(comp.id) and comp.sender_id is not None,  # 回复
-        Comp.Poke: lambda comp: comp.id != 0 and comp.qq != 0,  # 戳一戳
+        Comp.Poke: lambda comp: comp.target_id() is not None,  # 戳一戳
         Comp.Node: lambda comp: bool(comp.content),  # 转发节点
         Comp.Nodes: lambda comp: bool(comp.nodes),  # 多个转发节点
         Comp.File: lambda comp: bool(comp.file_ or comp.url),
-        Comp.WechatEmoji: lambda comp: comp.md5 is not None,  # 微信表情
+        Comp.Json: lambda comp: bool(comp.data),  # Json 卡片
+        Comp.Share: lambda comp: bool(comp.url) or bool(comp.title),
+        Comp.Music: lambda comp: (
+            (comp.id and comp._type and comp._type != "custom")
+            or (comp._type == "custom" and comp.url and comp.audio and comp.title)
+        ),  # 音乐分享
+        Comp.Forward: lambda comp: bool(comp.id),  # 合并转发
+        Comp.Location: lambda comp: bool(
+            comp.lat is not None and comp.lon is not None
+        ),  # 位置
+        Comp.Contact: lambda comp: bool(comp._type and comp.id),  # 推荐好友 or 群
+        Comp.Shake: lambda _: True,  # 窗口抖动（戳一戳）
+        Comp.Dice: lambda _: True,  # 掷骰子魔法表情
+        Comp.RPS: lambda _: True,  # 猜拳魔法表情
+        Comp.Unknown: lambda comp: bool(comp.text and comp.text.strip()),
     }
 
     async def initialize(self, ctx: PipelineContext) -> None:
@@ -61,16 +75,17 @@ class RespondStage(Stage):
         self.log_base = float(
             ctx.astrbot_config["platform_settings"]["segmented_reply"]["log_base"],
         )
-        interval_str: str = ctx.astrbot_config["platform_settings"]["segmented_reply"][
-            "interval"
-        ]
-        interval_str_ls = interval_str.replace(" ", "").split(",")
-        try:
-            self.interval = [float(t) for t in interval_str_ls]
-        except BaseException as e:
-            logger.error(f"解析分段回复的间隔时间失败。{e}")
-            self.interval = [1.5, 3.5]
-        logger.info(f"分段回复间隔时间：{self.interval}")
+        self.interval = [1.5, 3.5]
+        if self.enable_seg:
+            interval_str: str = ctx.astrbot_config["platform_settings"][
+                "segmented_reply"
+            ]["interval"]
+            interval_str_ls = interval_str.replace(" ", "").split(",")
+            try:
+                self.interval = [float(t) for t in interval_str_ls]
+            except BaseException as e:
+                logger.error(f"解析分段回复的间隔时间失败。{e}")
+            logger.info(f"分段回复间隔时间：{self.interval}")
 
     async def _word_cnt(self, text: str) -> int:
         """分段回复 统计字数"""
@@ -119,7 +134,7 @@ class RespondStage(Stage):
 
         if (result := event.get_result()) is None:
             return False
-        if self.only_llm_result and not result.is_llm_result():
+        if self.only_llm_result and not result.is_model_result():
             return False
 
         if event.get_platform_name() in [
@@ -231,9 +246,9 @@ class RespondStage(Stage):
                     await asyncio.sleep(i)
                     try:
                         if comp.type in need_separately:
-                            await event.send(MessageChain([comp]))
+                            await event.send(result.derive([comp]))
                         else:
-                            await event.send(MessageChain([*header_comps, comp]))
+                            await event.send(result.derive([*header_comps, comp]))
                             header_comps.clear()
                     except Exception as e:
                         logger.error(
@@ -256,7 +271,7 @@ class RespondStage(Stage):
                     modify_raw_chain=True,
                 )
                 for comp in sep_comps:
-                    chain = MessageChain([comp])
+                    chain = result.derive([comp])
                     try:
                         await event.send(chain)
                     except Exception as e:
@@ -264,7 +279,7 @@ class RespondStage(Stage):
                             f"发送消息链失败: chain = {chain}, error = {e}",
                             exc_info=True,
                         )
-                chain = MessageChain(result.chain)
+                chain = result.derive(result.chain)
                 if result.chain and len(result.chain) > 0:
                     try:
                         await event.send(chain)

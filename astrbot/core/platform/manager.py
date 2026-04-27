@@ -170,11 +170,27 @@ class PlatformManager:
                     from .sources.misskey.misskey_adapter import (
                         MisskeyPlatformAdapter,  # noqa: F401
                     )
+                case "weixin_oc":
+                    from .sources.weixin_oc.weixin_oc_adapter import (
+                        WeixinOCAdapter,  # noqa: F401
+                    )
                 case "slack":
                     from .sources.slack.slack_adapter import SlackAdapter  # noqa: F401
                 case "satori":
                     from .sources.satori.satori_adapter import (
                         SatoriPlatformAdapter,  # noqa: F401
+                    )
+                case "line":
+                    from .sources.line.line_adapter import (
+                        LinePlatformAdapter,  # noqa: F401
+                    )
+                case "kook":
+                    from .sources.kook.kook_adapter import (
+                        KookPlatformAdapter,  # noqa: F401
+                    )
+                case "mattermost":
+                    from .sources.mattermost.mattermost_adapter import (
+                        MattermostPlatformAdapter,  # noqa: F401
                     )
         except (ImportError, ModuleNotFoundError) as e:
             logger.error(

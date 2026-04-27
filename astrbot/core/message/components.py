@@ -25,12 +25,16 @@ import asyncio
 import base64
 import json
 import os
+import sys
 import uuid
 from enum import Enum
 from pathlib import Path
 from urllib.parse import urlparse
 
-from pydantic.v1 import BaseModel
+if sys.version_info >= (3, 14):
+    from pydantic import BaseModel
+else:
+    from pydantic.v1 import BaseModel
 
 from astrbot.core import astrbot_config, file_token_service, logger
 from astrbot.core.utils.astrbot_path import get_astrbot_temp_path
@@ -76,7 +80,6 @@ class ComponentType(str, Enum):
     Music = "Music"
     Json = "Json"
     Unknown = "Unknown"
-    WechatEmoji = "WechatEmoji"  # Wechat 下的 emoji 表情包
 
 
 class BaseMessageComponent(BaseModel):
@@ -101,22 +104,21 @@ class BaseMessageComponent(BaseModel):
 
 
 class Plain(BaseMessageComponent):
-    type = ComponentType.Plain
+    type: ComponentType = ComponentType.Plain
     text: str
-    convert: bool | None = True
 
     def __init__(self, text: str, convert: bool = True, **_) -> None:
         super().__init__(text=text, convert=convert, **_)
 
-    def toDict(self):
-        return {"type": "text", "data": {"text": self.text.strip()}}
+    def toDict(self) -> dict:
+        return {"type": "text", "data": {"text": self.text}}
 
-    async def to_dict(self):
+    async def to_dict(self) -> dict:
         return {"type": "text", "data": {"text": self.text}}
 
 
 class Face(BaseMessageComponent):
-    type = ComponentType.Face
+    type: ComponentType = ComponentType.Face
     id: int
 
     def __init__(self, **_) -> None:
@@ -124,15 +126,13 @@ class Face(BaseMessageComponent):
 
 
 class Record(BaseMessageComponent):
-    type = ComponentType.Record
+    type: ComponentType = ComponentType.Record
     file: str | None = ""
-    magic: bool | None = False
     url: str | None = ""
-    cache: bool | None = True
-    proxy: bool | None = True
-    timeout: int | None = 0
+    # Original text content (e.g. TTS source text), used as caption in fallback scenarios
+    text: str | None = None
     # 额外
-    path: str | None
+    path: str | None = None
 
     def __init__(self, file: str | None, **_) -> None:
         for k in _:
@@ -239,11 +239,10 @@ class Record(BaseMessageComponent):
 
 
 class Video(BaseMessageComponent):
-    type = ComponentType.Video
+    type: ComponentType = ComponentType.Video
     file: str
     url: str | None = ""
     cover: str | None = ""
-    c: int | None = 2
     # 额外
     path: str | None = ""
 
@@ -328,7 +327,7 @@ class Video(BaseMessageComponent):
 
 
 class At(BaseMessageComponent):
-    type = ComponentType.At
+    type: ComponentType = ComponentType.At
     qq: int | str  # 此处str为all时代表所有人
     name: str | None = ""
 
@@ -350,28 +349,28 @@ class AtAll(At):
 
 
 class RPS(BaseMessageComponent):  # TODO
-    type = ComponentType.RPS
+    type: ComponentType = ComponentType.RPS
 
     def __init__(self, **_) -> None:
         super().__init__(**_)
 
 
 class Dice(BaseMessageComponent):  # TODO
-    type = ComponentType.Dice
+    type: ComponentType = ComponentType.Dice
 
     def __init__(self, **_) -> None:
         super().__init__(**_)
 
 
 class Shake(BaseMessageComponent):  # TODO
-    type = ComponentType.Shake
+    type: ComponentType = ComponentType.Shake
 
     def __init__(self, **_) -> None:
         super().__init__(**_)
 
 
 class Share(BaseMessageComponent):
-    type = ComponentType.Share
+    type: ComponentType = ComponentType.Share
     url: str
     title: str
     content: str | None = ""
@@ -382,7 +381,7 @@ class Share(BaseMessageComponent):
 
 
 class Contact(BaseMessageComponent):  # TODO
-    type = ComponentType.Contact
+    type: ComponentType = ComponentType.Contact
     _type: str  # type 字段冲突
     id: int | None = 0
 
@@ -391,7 +390,7 @@ class Contact(BaseMessageComponent):  # TODO
 
 
 class Location(BaseMessageComponent):  # TODO
-    type = ComponentType.Location
+    type: ComponentType = ComponentType.Location
     lat: float
     lon: float
     title: str | None = ""
@@ -402,7 +401,7 @@ class Location(BaseMessageComponent):  # TODO
 
 
 class Music(BaseMessageComponent):
-    type = ComponentType.Music
+    type: ComponentType = ComponentType.Music
     _type: str
     id: int | None = 0
     url: str | None = ""
@@ -419,17 +418,12 @@ class Music(BaseMessageComponent):
 
 
 class Image(BaseMessageComponent):
-    type = ComponentType.Image
+    type: ComponentType = ComponentType.Image
     file: str | None = ""
     _type: str | None = ""
-    subType: int | None = 0
     url: str | None = ""
-    cache: bool | None = True
-    id: int | None = 40000
-    c: int | None = 2
     # 额外
     path: str | None = ""
-    file_unique: str | None = ""  # 某些平台可能有图片缓存的唯一标识
 
     def __init__(self, file: str | None, **_) -> None:
         super().__init__(file=file, **_)
@@ -534,7 +528,7 @@ class Image(BaseMessageComponent):
 
 
 class Reply(BaseMessageComponent):
-    type = ComponentType.Reply
+    type: ComponentType = ComponentType.Reply
     id: str | int
     """所引用的消息 ID"""
     chain: list["BaseMessageComponent"] | None = []
@@ -560,17 +554,40 @@ class Reply(BaseMessageComponent):
 
 
 class Poke(BaseMessageComponent):
-    type: str = ComponentType.Poke
-    id: int | None = 0
-    qq: int | None = 0
+    type: ComponentType = ComponentType.Poke
+    _type: str | int = "126"
+    id: int | str | None = 0
+    qq: int | str | None = 0  # deprecated: legacy field, kept for compatibility
 
-    def __init__(self, type: str, **_) -> None:
-        type = f"Poke:{type}"
-        super().__init__(type=type, **_)
+    def __init__(self, poke_type: str | int | None = None, **_) -> None:
+        # Backward compatible with old signature: Poke(type="poke", ...)
+        legacy_type = _.pop("type", None)
+        if poke_type is None:
+            poke_type = legacy_type
+        if poke_type in (None, "", "poke", "Poke"):
+            poke_type = "126"
+        super().__init__(_type=str(poke_type), **_)
+
+    def target_id(self) -> str | None:
+        """Return normalized target id, compatible with old `qq` field."""
+        for value in (self.id, self.qq):
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text and text != "0":
+                return text
+        return None
+
+    def toDict(self):
+        target_id = self.target_id()
+        data = {"type": str(self._type or "126")}
+        if target_id:
+            data["id"] = target_id
+        return {"type": "poke", "data": data}
 
 
 class Forward(BaseMessageComponent):
-    type = ComponentType.Forward
+    type: ComponentType = ComponentType.Forward
     id: str
 
     def __init__(self, **_) -> None:
@@ -580,7 +597,7 @@ class Forward(BaseMessageComponent):
 class Node(BaseMessageComponent):
     """群合并转发消息"""
 
-    type = ComponentType.Node
+    type: ComponentType = ComponentType.Node
     id: int | None = 0  # 忽略
     name: str | None = ""  # qq昵称
     uin: str | None = "0"  # qq号
@@ -637,7 +654,7 @@ class Node(BaseMessageComponent):
 
 
 class Nodes(BaseMessageComponent):
-    type = ComponentType.Nodes
+    type: ComponentType = ComponentType.Nodes
     nodes: list[Node]
 
     def __init__(self, nodes: list[Node], **_) -> None:
@@ -663,7 +680,7 @@ class Nodes(BaseMessageComponent):
 
 
 class Json(BaseMessageComponent):
-    type = ComponentType.Json
+    type: ComponentType = ComponentType.Json
     data: dict
 
     def __init__(self, data: str | dict, **_) -> None:
@@ -673,14 +690,14 @@ class Json(BaseMessageComponent):
 
 
 class Unknown(BaseMessageComponent):
-    type = ComponentType.Unknown
+    type: ComponentType = ComponentType.Unknown
     text: str
 
 
 class File(BaseMessageComponent):
     """文件消息段"""
 
-    type = ComponentType.File
+    type: ComponentType = ComponentType.File
     name: str | None = ""  # 名字
     file_: str | None = ""  # 本地路径
     url: str | None = ""  # url
@@ -702,21 +719,24 @@ class File(BaseMessageComponent):
 
         if self.url:
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    logger.warning(
-                        "不可以在异步上下文中同步等待下载! "
-                        "这个警告通常发生于某些逻辑试图通过 <File>.file 获取文件消息段的文件内容。"
-                        "请使用 await get_file() 代替直接获取 <File>.file 字段",
-                    )
-                    return ""
-                # 等待下载完成
-                loop.run_until_complete(self._download_file())
+                # 检查是否有正在运行的 event loop
+                asyncio.get_running_loop()
+                logger.warning(
+                    "不可以在异步上下文中同步等待下载! "
+                    "这个警告通常发生于某些逻辑试图通过 <File>.file 获取文件消息段的文件内容。"
+                    "请使用 await get_file() 代替直接获取 <File>.file 字段",
+                )
+                return ""
+            except RuntimeError:
+                # 没有运行中的 event loop，可以同步执行
+                try:
+                    # 使用 asyncio.run 安全地创建和关闭事件循环
+                    asyncio.run(self._download_file())
+                except Exception:
+                    logger.exception("文件下载失败")
 
                 if self.file_ and os.path.exists(self.file_):
                     return os.path.abspath(self.file_)
-            except Exception as e:
-                logger.error(f"文件下载失败: {e}")
 
         return ""
 
@@ -746,13 +766,38 @@ class File(BaseMessageComponent):
         if allow_return_url and self.url:
             return self.url
 
-        if self.file_ and os.path.exists(self.file_):
-            return os.path.abspath(self.file_)
+        if self.file_:
+            path = self.file_
+            if path.startswith("file://"):
+                # 处理 file:// (2 slashes) 或 file:/// (3 slashes)
+                # pathlib.as_uri() 通常生成 file:///
+                path = path[7:]
+                # 兼容 Windows: file:///C:/path -> /C:/path -> C:/path
+                if (
+                    os.name == "nt"
+                    and len(path) > 2
+                    and path[0] == "/"
+                    and path[2] == ":"
+                ):
+                    path = path[1:]
+
+            if os.path.exists(path):
+                return os.path.abspath(path)
 
         if self.url:
             await self._download_file()
             if self.file_:
-                return os.path.abspath(self.file_)
+                path = self.file_
+                if path.startswith("file://"):
+                    path = path[7:]
+                    if (
+                        os.name == "nt"
+                        and len(path) > 2
+                        and path[0] == "/"
+                        and path[2] == ":"
+                    ):
+                        path = path[1:]
+                return os.path.abspath(path)
 
         return ""
 
@@ -814,16 +859,6 @@ class File(BaseMessageComponent):
         }
 
 
-class WechatEmoji(BaseMessageComponent):
-    type = ComponentType.WechatEmoji
-    md5: str | None = ""
-    md5_len: int | None = 0
-    cdnurl: str | None = ""
-
-    def __init__(self, **_) -> None:
-        super().__init__(**_)
-
-
 ComponentTypes = {
     # Basic Message Segments
     "plain": Plain,
@@ -849,5 +884,4 @@ ComponentTypes = {
     "nodes": Nodes,
     "json": Json,
     "unknown": Unknown,
-    "WechatEmoji": WechatEmoji,
 }

@@ -91,6 +91,8 @@ class Main(Star):
                         controller: SessionController,
                         event: AstrMessageEvent,
                     ) -> None:
+                        if not event.message_str or not event.message_str.strip():
+                            return
                         event.message_obj.message.insert(
                             0,
                             Comp.At(qq=event.get_self_id(), name=event.get_self_id()),
@@ -105,7 +107,7 @@ class Main(Star):
                         await empty_mention_waiter(event)
                     except TimeoutError as _:
                         pass
-                    except Exception as e:
+                    except Exception:
                         yield event.plain_result("")
                     finally:
                         event.stop_event()

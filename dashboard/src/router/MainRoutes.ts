@@ -1,3 +1,5 @@
+import { EXTENSION_ROUTE_NAME } from './routeConstants.mjs';
+
 const MainRoutes = {
   path: '/main',
   meta: {
@@ -17,7 +19,7 @@ const MainRoutes = {
       component: () => import('@/views/WelcomePage.vue')
     },
     {
-      name: 'Extensions',
+      name: EXTENSION_ROUTE_NAME,
       path: '/extension',
       component: () => import('@/views/ExtensionPage.vue')
     },
@@ -42,9 +44,17 @@ const MainRoutes = {
       component: () => import('@/views/ConfigPage.vue')
     },
     {
-      name: 'Default',
+      path: '/normal',
+      redirect: '/config#normal'
+    },
+    {
+      path: '/system',
+      redirect: '/config#system'
+    },
+    {
+      name: 'Stats',
       path: '/dashboard/default',
-      component: () => import('@/views/dashboards/default/DefaultDashboard.vue')
+      component: () => import('@/views/stats/StatsPage.vue')
     },
     {
       name: 'Conversation',

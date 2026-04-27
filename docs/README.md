@@ -1,13 +1,14 @@
-# Documentation Map
+# AstrBot
+_✨ 易上手的多平台 LLM 聊天机器人及开发框架（的官方文档） ✨_
 
-Use this folder for agent-managed project documentation.
+[查看文档](https://docs.astrbot.app/) ｜ [问题提交](https://github.com/AstrBotDevs/AstrBot/issues)
 
-## Categories
+[AstrBot](https://github.com/AstrBotDevs/AstrBot) 是一个松耦合、异步、支持多消息平台部署、具有易用的插件系统和完善的大语言模型（LLM）接入功能的聊天机器人及开发框架。
+
+![image](https://github.com/user-attachments/assets/48f72a71-9456-4166-bbd2-f2a6c8cd740f)
+
+## Agent Documentation Map
 
 - `features/`: user-facing or system-facing product capabilities, behavior, and implementation notes.
 
-## Lookup Flow
-
-1. Pick the category that matches the task.
-2. Open that category's `README.md`.
-3. Then open the concrete document you need.
+Lookup flow: pick the matching category, open its `README.md`, then open the concrete document needed.

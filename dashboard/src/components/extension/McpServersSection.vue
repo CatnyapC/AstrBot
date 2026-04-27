@@ -110,6 +110,10 @@
 
             <small style="color: grey">*{{ tm('dialogs.addServer.tips.timeoutConfig') }}</small>
 
+            <v-alert type="info" variant="tonal" density="compact" class="mt-3">
+              {{ tm('dialogs.addServer.tips.transportRecommendation') }}
+            </v-alert>
+
             <div class="monaco-container" style="margin-top: 16px;">
               <VueMonacoEditor v-model:value="serverConfigJson" theme="vs-dark" language="json" :options="{
                 minimap: {
@@ -284,8 +288,9 @@ export default {
   mounted() {
     this.getServers();
     this.refreshInterval = setInterval(() => {
+      // 轮询时间延长到30秒，减少服务器压力，同时保持数据相对新鲜
       this.getServers();
-    }, 5000);
+    }, 30000);
   },
   unmounted() {
     if (this.refreshInterval) {
@@ -300,6 +305,10 @@ export default {
       this.loadingGettingServers = true;
       axios.get('/api/tools/mcp/servers')
         .then(response => {
+          if (response.data.status === 'error') {
+            this.showError(response.data.message || this.tm('messages.getServersError', { error: 'Unknown error' }));
+            return;
+          }
           this.mcpServers = response.data.data || [];
           this.mcpServers.forEach(server => {
             if (!this.mcpServerUpdateLoaders[server.name]) {
@@ -372,6 +381,10 @@ export default {
         axios.post(endpoint, serverData)
           .then(response => {
             this.loading = false;
+            if (response.data.status === 'error') {
+              this.showError(response.data.message || this.tm('messages.saveError', { error: 'Unknown error' }));
+              return;
+            }
             this.showMcpServerDialog = false;
             this.addServerDialogMessage = '';
             this.getServers();

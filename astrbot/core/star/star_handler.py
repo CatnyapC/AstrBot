@@ -74,6 +74,22 @@ class StarHandlerRegistry(Generic[T]):
     @overload
     def get_handlers_by_event_type(
         self,
+        event_type: Literal[EventType.OnAgentBeginEvent],
+        only_activated=True,
+        plugins_name: list[str] | None = None,
+    ) -> list[StarHandlerMetadata[Callable[..., Awaitable[Any]]]]: ...
+
+    @overload
+    def get_handlers_by_event_type(
+        self,
+        event_type: Literal[EventType.OnAgentDoneEvent],
+        only_activated=True,
+        plugins_name: list[str] | None = None,
+    ) -> list[StarHandlerMetadata[Callable[..., Awaitable[Any]]]]: ...
+
+    @overload
+    def get_handlers_by_event_type(
+        self,
         event_type: Literal[EventType.OnDecoratingResultEvent],
         only_activated=True,
         plugins_name: list[str] | None = None,
@@ -93,6 +109,30 @@ class StarHandlerRegistry(Generic[T]):
     def get_handlers_by_event_type(
         self,
         event_type: Literal[EventType.OnAfterMessageSentEvent],
+        only_activated=True,
+        plugins_name: list[str] | None = None,
+    ) -> list[StarHandlerMetadata[Callable[..., Awaitable[Any]]]]: ...
+
+    @overload
+    def get_handlers_by_event_type(
+        self,
+        event_type: Literal[EventType.OnPluginErrorEvent],
+        only_activated=True,
+        plugins_name: list[str] | None = None,
+    ) -> list[StarHandlerMetadata[Callable[..., Awaitable[Any]]]]: ...
+
+    @overload
+    def get_handlers_by_event_type(
+        self,
+        event_type: Literal[EventType.OnPluginLoadedEvent],
+        only_activated=True,
+        plugins_name: list[str] | None = None,
+    ) -> list[StarHandlerMetadata[Callable[..., Awaitable[Any]]]]: ...
+
+    @overload
+    def get_handlers_by_event_type(
+        self,
+        event_type: Literal[EventType.OnPluginUnloadedEvent],
         only_activated=True,
         plugins_name: list[str] | None = None,
     ) -> list[StarHandlerMetadata[Callable[..., Awaitable[Any]]]]: ...
@@ -136,6 +176,8 @@ class StarHandlerRegistry(Generic[T]):
                     not in (
                         EventType.OnAstrBotLoadedEvent,
                         EventType.OnPlatformLoadedEvent,
+                        EventType.OnPluginLoadedEvent,
+                        EventType.OnPluginUnloadedEvent,
                     )
                     and not plugin.reserved
                 ):
@@ -187,11 +229,16 @@ class EventType(enum.Enum):
     OnWaitingLLMRequestEvent = enum.auto()  # 等待调用 LLM（在获取锁之前，仅通知）
     OnLLMRequestEvent = enum.auto()  # 收到 LLM 请求（可以是用户也可以是插件）
     OnLLMResponseEvent = enum.auto()  # LLM 响应后
+    OnAgentBeginEvent = enum.auto()  # Agent 开始运行
+    OnAgentDoneEvent = enum.auto()  # Agent 运行完成
     OnDecoratingResultEvent = enum.auto()  # 发送消息前
     OnCallingFuncToolEvent = enum.auto()  # 调用函数工具
     OnUsingLLMToolEvent = enum.auto()  # 使用 LLM 工具
     OnLLMToolRespondEvent = enum.auto()  # 调用函数工具后
     OnAfterMessageSentEvent = enum.auto()  # 发送消息后
+    OnPluginErrorEvent = enum.auto()  # 插件处理消息异常时
+    OnPluginLoadedEvent = enum.auto()  # 插件加载完成
+    OnPluginUnloadedEvent = enum.auto()  # 插件卸载完成
 
 
 H = TypeVar("H", bound=Callable[..., Any])

@@ -43,7 +43,7 @@
                 <v-fade-transition>
                     <div v-if="showSkeleton" class="loading-container">
                         <v-row>
-                            <v-col v-for="n in 6" :key="n" cols="12" sm="6" lg="4" xl="3">
+                            <v-col v-for="n in 6" :key="n" cols="12" sm="6" lg="6" xl="4">
                                 <v-skeleton-loader type="card" rounded="lg" />
                             </v-col>
                         </v-row>
@@ -59,8 +59,8 @@
                             {{ tm('folder.foldersTitle') }} ({{ currentFolders.length }})
                         </h3>
                         <v-row>
-                            <v-col v-for="folder in currentFolders" :key="folder.folder_id" cols="12" sm="6" lg="4"
-                                xl="3">
+                            <v-col v-for="folder in currentFolders" :key="folder.folder_id" cols="12" sm="6" lg="6"
+                                xl="4">
                                 <FolderCard :folder="folder" @click="navigateToFolder(folder.folder_id)"
                                     @open="navigateToFolder(folder.folder_id)" @rename="openRenameFolderDialog(folder)"
                                     @move="openMoveFolderDialog(folder)" @delete="confirmDeleteFolder(folder)"
@@ -76,8 +76,8 @@
                             {{ tm('persona.personasTitle') }} ({{ currentPersonas.length }})
                         </h3>
                         <v-row>
-                            <v-col v-for="persona in currentPersonas" :key="persona.persona_id" cols="12" sm="6" lg="4"
-                                xl="3">
+                            <v-col v-for="persona in currentPersonas" :key="persona.persona_id" cols="12" sm="6" lg="6"
+                                xl="4">
                                 <PersonaCard :persona="persona" @view="viewPersona(persona)"
                                     @edit="editPersona(persona)" @move="openMovePersonaDialog(persona)"
                                     @delete="confirmDeletePersona(persona)" />
@@ -117,13 +117,29 @@
             <v-card v-if="viewingPersona">
                 <v-card-title class="d-flex justify-space-between align-center">
                     <span class="text-h5">{{ viewingPersona.persona_id }}</span>
-                    <v-btn icon="mdi-close" variant="text" @click="showViewDialog = false" />
+                    <div class="d-flex align-center ga-1">
+                        <v-btn
+                            color="primary"
+                            variant="tonal"
+                            size="small"
+                            prepend-icon="mdi-pencil"
+                            @click="openEditFromViewDialog"
+                        >
+                            {{ tm('buttons.edit') }}
+                        </v-btn>
+                        <v-btn icon="mdi-close" variant="text" @click="showViewDialog = false" />
+                    </div>
                 </v-card-title>
 
                 <v-card-text>
                     <div class="mb-4">
                         <h4 class="text-h6 mb-2">{{ tm('form.systemPrompt') }}</h4>
                         <pre class="system-prompt-content">{{ viewingPersona.system_prompt }}</pre>
+                    </div>
+
+                    <div v-if="viewingPersona.custom_error_message" class="mb-4">
+                        <h4 class="text-h6 mb-2">{{ tm('form.customErrorMessage') }}</h4>
+                        <pre class="system-prompt-content">{{ viewingPersona.custom_error_message }}</pre>
                     </div>
 
                     <div v-if="viewingPersona.begin_dialogs && viewingPersona.begin_dialogs.length > 0" class="mb-4">
@@ -270,6 +286,7 @@ import type { Folder, FolderTreeNode } from '@/components/folder/types';
 interface Persona {
     persona_id: string;
     system_prompt: string;
+    custom_error_message?: string | null;
     begin_dialogs?: string[] | null;
     tools?: string[] | null;
     skills?: string[] | null;
@@ -412,6 +429,13 @@ export default defineComponent({
         viewPersona(persona: Persona) {
             this.viewingPersona = persona;
             this.showViewDialog = true;
+        },
+
+        openEditFromViewDialog() {
+            if (!this.viewingPersona) return;
+            this.editingPersona = this.viewingPersona;
+            this.showViewDialog = false;
+            this.showPersonaDialog = true;
         },
 
         handlePersonaSaved(message: string) {

@@ -42,6 +42,40 @@
       "title": "Backup & Restore",
       "subtitle": "Export or import all AstrBot data for easy migration to a new server",
       "button": "Backup Manager"
+    },
+    "cleanup": {
+      "title": "Log & Cache Cleanup",
+      "subtitle": "Review disk usage for logs and caches, then clean them from the UI without shell commands.",
+      "refresh": "Refresh Usage",
+      "cleanAll": "Clean All",
+      "panel": {
+        "title": "Cleanup Details",
+        "subtitle": "Current usage: {size}"
+      },
+      "fileCount": "{count} files",
+      "confirm": "Clean {target} now?",
+      "targetNames": {
+        "cache": "cache",
+        "logs": "logs",
+        "all": "logs and cache"
+      },
+      "targets": {
+        "cache": {
+          "title": "Cache",
+          "subtitle": "Remove temporary files, plugin market cache, and skill cache.",
+          "button": "Clean Cache"
+        },
+        "logs": {
+          "title": "Logs",
+          "subtitle": "Remove rotated logs and truncate the current active log files.",
+          "button": "Clean Logs"
+        }
+      },
+      "messages": {
+        "statusFailed": "Failed to load storage usage",
+        "cleanupSuccess": "Cleared {count} files and freed {size}",
+        "cleanupFailed": "Cleanup failed"
+      }
     }
   },
   "sidebar": {
@@ -127,6 +161,54 @@
       "renameInvalidChars": "Filename contains invalid characters",
       "renameFailed": "Rename failed",
       "ftpHint": "For large backup files, you can also upload directly to the data/backups directory via FTP/SFTP"
+    }
+  },
+  "apiKey": {
+    "title": "API Keys",
+    "manageTitle": "Developer Access Keys",
+    "subtitle": "Create API keys for external developers to call open HTTP APIs.",
+    "name": "Key Name",
+    "expiresInDays": "Expiration",
+    "expiryOptions": {
+      "day1": "1 day",
+      "day7": "7 days",
+      "day30": "30 days",
+      "day90": "90 days",
+      "permanent": "Permanent"
+    },
+    "permanentWarning": "Permanent API keys are high risk. Store them securely and use only when necessary.",
+    "scopes": "Scopes",
+    "create": "Create API Key",
+    "revoke": "Revoke",
+    "delete": "Delete",
+    "copy": "Copy",
+    "docsLink": "Open docs",
+    "plaintextHint": "Save this key now. The plaintext will not be shown again.",
+    "empty": "No API keys",
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "table": {
+      "name": "Name",
+      "prefix": "Prefix",
+      "scopes": "Scopes",
+      "status": "Status",
+      "lastUsed": "Last Used",
+      "createdAt": "Created At",
+      "actions": "Actions"
+    },
+    "messages": {
+      "loadFailed": "Failed to load API keys",
+      "scopeRequired": "Please select at least one scope",
+      "createSuccess": "API key created",
+      "createFailed": "Failed to create API key",
+      "revokeSuccess": "API key revoked",
+      "revokeFailed": "Failed to revoke API key",
+      "deleteSuccess": "API key deleted",
+      "deleteFailed": "Failed to delete API key",
+      "copySuccess": "API key copied",
+      "copyFailed": "Failed to copy API key"
     }
   }
 }
