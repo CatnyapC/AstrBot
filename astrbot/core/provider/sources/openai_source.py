@@ -50,6 +50,7 @@ from ..register import register_provider_adapter
 
 _RETRYABLE_PROVIDER_ERROR_MAX_RETRIES = 3
 _RETRYABLE_PROVIDER_ERROR_BACKOFF_SEC = (1.0, 2.0)
+_RUNTIME_ONLY_CHAT_KWARGS = frozenset({"abort_signal"})
 
 
 class EmptyOrMalformedCompletionError(Exception):
@@ -1044,6 +1045,8 @@ class ProviderOpenAIOfficial(Provider):
 
         payloads = {"messages": context_query, "model": model}
         for key, value in kwargs.items():
+            if key in _RUNTIME_ONLY_CHAT_KWARGS:
+                continue
             if value is not None and key not in payloads:
                 payloads[key] = value
 

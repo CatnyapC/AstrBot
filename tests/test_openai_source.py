@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -50,6 +51,23 @@ def _make_groq_provider(overrides: dict | None = None) -> ProviderGroq:
         provider_config=provider_config,
         provider_settings={},
     )
+
+
+@pytest.mark.asyncio
+async def test_prepare_chat_payload_drops_runtime_only_kwargs():
+    provider = _make_provider()
+    try:
+        payloads, _ = await provider._prepare_chat_payload(
+            prompt=None,
+            contexts=[{"role": "user", "content": "hello"}],
+            abort_signal=asyncio.Event(),
+            temperature=0.2,
+        )
+
+        assert "abort_signal" not in payloads
+        assert payloads["temperature"] == 0.2
+    finally:
+        await provider.terminate()
 
 
 @pytest.mark.asyncio
