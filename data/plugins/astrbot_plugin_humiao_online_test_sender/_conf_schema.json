@@ -1,0 +1,93 @@
+{
+  "Basic": {
+    "description": "Humiao sender basic settings",
+    "type": "object",
+    "items": {
+      "enabled": {
+        "description": "Enable sender plugin",
+        "type": "bool",
+        "default": true
+      },
+      "platform_type": {
+        "description": "Sender platform type",
+        "type": "string",
+        "hint": "Use aiocqhttp for QQ/OneBot, telegram for Telegram, or auto to match by platform id across supported adapters",
+        "options": [
+          "aiocqhttp",
+          "telegram",
+          "auto"
+        ],
+        "default": "aiocqhttp"
+      },
+      "humiao_platform_id": {
+        "description": "Sender platform id for humiao bot",
+        "type": "string",
+        "hint": "Must match the configured AstrBot sender adapter id, for example fox_miao_bot",
+        "default": ""
+      },
+      "allowed_group_ids": {
+        "description": "Whitelisted groups",
+        "type": "list",
+        "items": {
+          "type": "string"
+        },
+        "hint": "For Telegram, allow negative chat ids such as -5163620321. Topic sends can use chat_id#message_thread_id in manifests.",
+        "default": [
+          "499574167"
+        ]
+      }
+    }
+  },
+  "Paths": {
+    "description": "Optional path overrides",
+    "type": "object",
+    "items": {
+      "inbox_dir": {
+        "description": "Inbox directory",
+        "type": "string",
+        "default": ""
+      },
+      "report_dir": {
+        "description": "Report directory",
+        "type": "string",
+        "default": ""
+      },
+      "processing_dir": {
+        "description": "Processing directory",
+        "type": "string",
+        "default": ""
+      },
+      "processed_dir": {
+        "description": "Processed manifest directory",
+        "type": "string",
+        "default": ""
+      }
+    }
+  },
+  "Runtime": {
+    "description": "Polling and send limits",
+    "type": "object",
+    "items": {
+      "poll_interval_sec": {
+        "description": "Inbox polling interval in seconds",
+        "type": "float",
+        "default": 1.0
+      },
+      "send_interval_ms": {
+        "description": "Default delay between cases in a run",
+        "type": "int",
+        "default": 1500
+      },
+      "max_cases_per_run": {
+        "description": "Hard cap for one run",
+        "type": "int",
+        "default": 20
+      },
+      "max_message_chars": {
+        "description": "Maximum message text length",
+        "type": "int",
+        "default": 400
+      }
+    }
+  }
+}

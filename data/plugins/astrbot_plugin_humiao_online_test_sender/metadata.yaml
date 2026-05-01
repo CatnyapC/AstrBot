@@ -1,0 +1,6 @@
+name: astrbot_plugin_humiao_online_test_sender
+display_name: Humiao Online Test Sender
+desc: Inbox-based OneBot sender for live thread-router tests
+version: v0.1.0
+author: lincoln
+repo: ""
