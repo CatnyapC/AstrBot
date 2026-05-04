@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 
+from astrbot.core import logger
 from astrbot.core.platform.astr_message_event import AstrMessageEvent
 from astrbot.core.provider.entities import ProviderRequest
 from astrbot.core.star.star_handler import StarHandlerMetadata
@@ -40,10 +41,23 @@ class ProcessStage(Stage):
                 if isinstance(resp, ProviderRequest):
                     # Handler 的 LLM 请求
                     event.set_extra("provider_request", resp)
+                    if bool(event.get_extra("_router_timeout_dispatched", False)):
+                        logger.info(
+                            "ProcessStage provider_request handoff: session=%s router_timeout=true prompt_len=%s",
+                            event.unified_msg_origin,
+                            len(getattr(resp, "prompt", "") or ""),
+                        )
                     _t = False
                     async for _ in self.agent_sub_stage.process(event):
                         _t = True
                         yield
+                    if not _t and bool(
+                        event.get_extra("_router_timeout_dispatched", False)
+                    ):
+                        logger.info(
+                            "ProcessStage provider_request produced no downstream yield: session=%s router_timeout=true",
+                            event.unified_msg_origin,
+                        )
                     if not _t:
                         yield
                 else:

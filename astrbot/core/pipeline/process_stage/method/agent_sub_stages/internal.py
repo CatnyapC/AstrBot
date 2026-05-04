@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import time
 from collections.abc import AsyncGenerator
 from dataclasses import replace
 
@@ -196,7 +197,25 @@ class InternalAgentSubStage(Stage):
                 logger.warning("send_typing failed", exc_info=True)
             await call_event_hook(event, EventType.OnWaitingLLMRequestEvent)
 
+            trace_provider_request = bool(
+                has_provider_request
+                or event.get_extra("_router_timeout_dispatched", False)
+            )
+            lock_wait_started = time.perf_counter()
+            if trace_provider_request:
+                logger.info(
+                    "InternalAgentSubStage waiting session lock: session=%s router_timeout=%s provider_request=%s",
+                    event.unified_msg_origin,
+                    bool(event.get_extra("_router_timeout_dispatched", False)),
+                    has_provider_request,
+                )
             async with session_lock_manager.acquire_lock(event.unified_msg_origin):
+                if trace_provider_request:
+                    logger.info(
+                        "InternalAgentSubStage acquired session lock: session=%s wait=%.3fs",
+                        event.unified_msg_origin,
+                        time.perf_counter() - lock_wait_started,
+                    )
                 logger.debug("acquired session lock for llm request")
                 agent_runner: AgentRunner | None = None
                 runner_registered = False
@@ -236,7 +255,23 @@ class InternalAgentSubStage(Stage):
                         and not event.platform_meta.support_streaming_message
                     )
 
-                    if await call_event_hook(event, EventType.OnLLMRequestEvent, req):
+                    if trace_provider_request:
+                        logger.info(
+                            "InternalAgentSubStage calling OnLLMRequestEvent: session=%s prompt_len=%s",
+                            event.unified_msg_origin,
+                            len(getattr(req, "prompt", "") or ""),
+                        )
+                    hook_consumed = await call_event_hook(
+                        event, EventType.OnLLMRequestEvent, req
+                    )
+                    if trace_provider_request:
+                        logger.info(
+                            "InternalAgentSubStage OnLLMRequestEvent returned: session=%s consumed=%s stopped=%s",
+                            event.unified_msg_origin,
+                            hook_consumed,
+                            event.is_stopped(),
+                        )
+                    if hook_consumed:
                         if reset_coro:
                             reset_coro.close()
                         return

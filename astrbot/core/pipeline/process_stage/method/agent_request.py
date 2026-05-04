@@ -32,13 +32,35 @@ class AgentRequestSubStage(Stage):
         await self.agent_sub_stage.initialize(ctx)
 
     async def process(self, event: AstrMessageEvent) -> AsyncGenerator[None, None]:
+        router_timeout = bool(event.get_extra("_router_timeout_dispatched", False))
+        has_provider_request = event.get_extra("provider_request") is not None
+        if router_timeout or has_provider_request:
+            logger.info(
+                "AgentRequestSubStage enter: session=%s router_timeout=%s provider_request=%s call_llm=%s stopped=%s",
+                event.unified_msg_origin,
+                router_timeout,
+                has_provider_request,
+                event.call_llm,
+                event.is_stopped(),
+            )
+
         if not self.ctx.astrbot_config["provider_settings"]["enable"]:
+            if router_timeout or has_provider_request:
+                logger.info(
+                    "AgentRequestSubStage skip: provider disabled session=%s",
+                    event.unified_msg_origin,
+                )
             logger.debug(
                 "This pipeline does not enable AI capability, skip processing."
             )
             return
 
         if not await SessionServiceManager.should_process_llm_request(event):
+            if router_timeout or has_provider_request:
+                logger.info(
+                    "AgentRequestSubStage skip: session llm disabled session=%s",
+                    event.unified_msg_origin,
+                )
             logger.debug(
                 f"The session {event.unified_msg_origin} has disabled AI capability, skipping processing."
             )
