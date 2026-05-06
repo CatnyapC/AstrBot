@@ -68,6 +68,19 @@ def _as_float(value: object, default: float, *, minimum: float = 0.0) -> float:
         return max(minimum, float(default))
 
 
+def _as_optional_int(value: object, field_name: str) -> tuple[int | None, str | None]:
+    text = _as_str(value)
+    if not text:
+        return None, None
+    try:
+        parsed = int(text)
+    except Exception:
+        return None, f"{field_name} must be numeric: {text}"
+    if parsed <= 0:
+        return None, f"{field_name} must be positive: {text}"
+    return parsed, None
+
+
 def _json_safe(value: object) -> object:
     if value is None:
         return None
@@ -535,6 +548,10 @@ class HumiaoOnlineTestSender(Star):
         message = case.get("message") if isinstance(case.get("message"), dict) else {}
         text = _as_str(message.get("text"))
         at_user_ids = _as_str_list(message.get("at_user_ids"))
+        reply_to_message_id, reply_error = _as_optional_int(
+            message.get("reply_to_message_id"),
+            "message.reply_to_message_id",
+        )
         send_delay_ms = _as_int(case.get("send_delay_ms"), default_delay_ms, minimum=0)
         report: dict[str, Any] = {
             "case_id": case_id,
@@ -548,10 +565,15 @@ class HumiaoOnlineTestSender(Star):
             "sent_at": 0.0,
             "raw_message_id": "",
         }
+        if reply_to_message_id is not None:
+            report["message"]["reply_to_message_id"] = reply_to_message_id
         if not _is_group_allowed(
             group_id, self.config.allowed_group_ids, platform_type
         ):
             report["error"] = f"group not allowed: {group_id}"
+            return report
+        if reply_error:
+            report["error"] = reply_error
             return report
         if platform_type == PLATFORM_AIOCQHTTP and not group_id.isdigit():
             report["error"] = f"group_id must be numeric: {group_id}"
@@ -572,6 +594,7 @@ class HumiaoOnlineTestSender(Star):
                 case_id=case_id,
                 group_id=group_id,
                 text=text,
+                reply_to_message_id=reply_to_message_id,
             )
         return await self._send_aiocqhttp_case(
             adapter,
@@ -637,6 +660,7 @@ class HumiaoOnlineTestSender(Star):
         case_id: str,
         group_id: str,
         text: str,
+        reply_to_message_id: int | None = None,
     ) -> dict[str, Any]:
         chat_id, thread_id, error = _telegram_group_parts(group_id)
         if error:
@@ -645,6 +669,8 @@ class HumiaoOnlineTestSender(Star):
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
         if thread_id is not None:
             payload["message_thread_id"] = thread_id
+        if reply_to_message_id is not None:
+            payload["reply_to_message_id"] = reply_to_message_id
         client = self._telegram_client(adapter)
         if client is None or not callable(getattr(client, "send_message", None)):
             report["error"] = "telegram client.send_message unavailable"
@@ -671,6 +697,8 @@ class HumiaoOnlineTestSender(Star):
         )
         if thread_id is not None:
             report["telegram_message_thread_id"] = thread_id
+        if reply_to_message_id is not None:
+            report["telegram_reply_to_message_id"] = reply_to_message_id
         logger.info(
             "[humiao_test_sender] sent telegram case=%s group=%s message_id=%s text=%r",
             case_id,

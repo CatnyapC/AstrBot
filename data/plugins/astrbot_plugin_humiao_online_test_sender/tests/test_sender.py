@@ -181,6 +181,53 @@ def test_telegram_topic_suffix_becomes_message_thread_id():
     }
 
 
+def test_telegram_reply_to_message_id_passes_to_send_payload():
+    sender = build_sender(
+        PluginConfig(
+            platform_type=PLATFORM_TELEGRAM,
+            allowed_group_ids=("-5163620321",),
+        )
+    )
+    client = SimpleNamespace(send_message=AsyncMock(return_value={"message_id": 790}))
+    adapter = SimpleNamespace(client=client)
+
+    report = asyncio.run(
+        sender._send_case(
+            adapter,
+            {
+                "case_id": "tg-reply-case",
+                "group_id": "-5163620321#777",
+                "message": {
+                    "text": "reply hello",
+                    "reply_to_message_id": "750",
+                },
+            },
+            default_group_id="",
+            default_delay_ms=0,
+            adapter_self_id="tg-bot",
+            adapter_id="fox_miao_bot",
+            platform_type=PLATFORM_TELEGRAM,
+        )
+    )
+
+    client.send_message.assert_awaited_once_with(
+        chat_id=-5163620321,
+        text="reply hello",
+        message_thread_id=777,
+        reply_to_message_id=750,
+    )
+    assert report["status"] == "sent"
+    assert report["telegram_message_thread_id"] == 777
+    assert report["telegram_reply_to_message_id"] == 750
+    assert report["message"]["reply_to_message_id"] == 750
+    assert report["telegram_send_payload"] == {
+        "chat_id": -5163620321,
+        "text": "reply hello",
+        "message_thread_id": 777,
+        "reply_to_message_id": 750,
+    }
+
+
 def test_manifest_send_survives_telegram_identity_property_error(tmp_path):
     sender = build_sender(
         PluginConfig(
