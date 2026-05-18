@@ -154,7 +154,9 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
             ret = await cls._parse_onebot_json(message_chain)
             if not ret:
                 return []
-            send_result = await cls._dispatch_send(bot, event, is_group, session_id, ret)
+            send_result = await cls._dispatch_send(
+                bot, event, is_group, session_id, ret
+            )
             return cls._extract_sent_message_ids(send_result)
         sent_message_ids: list[str] = []
         for seg in message_chain.chain:
@@ -168,10 +170,14 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
 
                 if is_group:
                     payload["group_id"] = session_id
-                    send_result = await bot.call_action("send_group_forward_msg", **payload)
+                    send_result = await bot.call_action(
+                        "send_group_forward_msg", **payload
+                    )
                 else:
                     payload["user_id"] = session_id
-                    send_result = await bot.call_action("send_private_forward_msg", **payload)
+                    send_result = await bot.call_action(
+                        "send_private_forward_msg", **payload
+                    )
                 sent_message_ids.extend(cls._extract_sent_message_ids(send_result))
             elif isinstance(seg, File):
                 d = await cls._from_segment_to_dict(seg)

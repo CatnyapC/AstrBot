@@ -1146,6 +1146,9 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     func_tool = req.func_tool.get_tool(func_tool_name)
                     available_tools = req.func_tool.names()
 
+                #  Some API may return None for tools with no parameters
+                if func_tool_args is None:
+                    func_tool_args = {}
                 logger.info(f"使用工具：{func_tool_name}，参数：{func_tool_args}")
 
                 if not func_tool:
@@ -1507,7 +1510,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     model=self.req.model,
                     session_id=self.req.session_id,
                     extra_user_content_parts=self.req.extra_user_content_parts,
-                    tool_choice="required",
+                    # tool_choice="required",
                     abort_signal=self._abort_signal,
                 )
                 if requery_resp:
@@ -1533,7 +1536,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                         model=self.req.model,
                         session_id=self.req.session_id,
                         extra_user_content_parts=self.req.extra_user_content_parts,
-                        tool_choice="required",
+                        # tool_choice="required",
                         abort_signal=self._abort_signal,
                     )
                     if repair_resp:

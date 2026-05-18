@@ -321,7 +321,9 @@ class TelegramPlatformEvent(AstrMessageEvent):
                 if at_user_id and not at_flag:
                     i.text = f"@{at_user_id} {i.text}"
                     at_flag = True
-                sent_messages.extend(await cls._send_text_chunks(client, i.text, payload))
+                sent_messages.extend(
+                    await cls._send_text_chunks(client, i.text, payload)
+                )
             elif isinstance(i, Image):
                 image_path = await i.convert_to_file_path()
                 if _is_gif(image_path):
@@ -330,7 +332,9 @@ class TelegramPlatformEvent(AstrMessageEvent):
                 else:
                     send_coro = client.send_photo
                     media_kwarg = {"photo": image_path}
-                sent_messages.append(await send_coro(**media_kwarg, **cast(Any, payload)))
+                sent_messages.append(
+                    await send_coro(**media_kwarg, **cast(Any, payload))
+                )
             elif isinstance(i, File):
                 path = await i.get_file()
                 name = i.name or os.path.basename(path)
@@ -370,9 +374,13 @@ class TelegramPlatformEvent(AstrMessageEvent):
             sent_messages = await self.send_with_client(
                 self.client, message, self.get_sender_id()
             )
-        self.set_extra("_telegram_sent_message_ids", _telegram_message_ids(sent_messages))
+        self.set_extra(
+            "_telegram_sent_message_ids", _telegram_message_ids(sent_messages)
+        )
         setattr(message, "_telegram_sent_messages", sent_messages)
-        setattr(message, "_telegram_sent_message_ids", _telegram_message_ids(sent_messages))
+        setattr(
+            message, "_telegram_sent_message_ids", _telegram_message_ids(sent_messages)
+        )
         await super().send(message)
 
     async def react(self, emoji: str | None, big: bool = False) -> None:
