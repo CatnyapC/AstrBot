@@ -35,9 +35,10 @@ async def test_aiocqhttp_parse_json_outputs_standard_poke_data():
 @pytest.mark.asyncio
 async def test_aiocqhttp_send_message_dispatches_onebot_v11_poke_payload():
     bot = AsyncMock()
+    bot.send_group_msg.return_value = {"message_id": 456789}
     chain = MessageChain([Comp.Poke(type="126", id=2003)])
 
-    await AiocqhttpMessageEvent.send_message(
+    sent_ids = await AiocqhttpMessageEvent.send_message(
         bot=bot,
         message_chain=chain,
         event=None,
@@ -49,3 +50,4 @@ async def test_aiocqhttp_send_message_dispatches_onebot_v11_poke_payload():
         group_id=123456,
         message=[{"type": "poke", "data": {"type": "126", "id": "2003"}}],
     )
+    assert sent_ids == ["456789"]

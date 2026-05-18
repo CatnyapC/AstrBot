@@ -76,6 +76,9 @@ AstrBot 默认配置如下：
         "show_tool_use_status": False,
         "streaming_segmented": False,
         "max_agent_step": 30,
+        "local_model_id_prefixes": ["llama_cpp"],
+        "local_model_max_agent_step": 2,
+        "local_model_tool_result_max_chars": 1000,
         "tool_call_timeout": 120,
     },
     "provider_stt_settings": {
@@ -362,6 +365,18 @@ Brave 搜索引擎的 API Key 列表。使用 `brave` 作为网页搜索提供�
 #### `provider_settings.max_agent_step`
 
 Agent 最大步骤数限制。默认为 `30`。模型的每次工具调用算作一步。
+
+#### `provider_settings.local_model_id_prefixes`
+
+命中这些前缀的提供商 ID、提供商类型/模型组合或模型名会启用本地模型保护策略。默认为 `["llama_cpp"]`。
+
+#### `provider_settings.local_model_max_agent_step`
+
+本地模型额外工具调用步骤上限。默认为 `2`。设置为 `0` 表示不启用额外限制。
+
+#### `provider_settings.local_model_tool_result_max_chars`
+
+本地模型每轮工具调用塞回下一轮 LLM 上下文的工具结果总字符数。默认为 `1000`。设置为 `0` 表示不启用额外限制。
 
 #### `provider_settings.tool_call_timeout`
 

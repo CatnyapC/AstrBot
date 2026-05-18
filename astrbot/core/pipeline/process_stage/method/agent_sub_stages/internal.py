@@ -36,6 +36,7 @@ from astrbot.core.provider.entities import (
 )
 from astrbot.core.star.star_handler import EventType
 from astrbot.core.utils.metrics import Metric
+from astrbot.core.utils.local_model_policy import resolve_local_model_max_agent_step
 from astrbot.core.utils.session_lock import session_lock_manager
 
 from .....astr_agent_run_util import AgentRunner, run_agent, run_live_agent
@@ -240,6 +241,11 @@ class InternalAgentSubStage(Stage):
                     req = build_result.provider_request
                     provider = build_result.provider
                     reset_coro = build_result.reset_coro
+                    max_step = resolve_local_model_max_agent_step(
+                        provider,
+                        self.main_agent_cfg.provider_settings,
+                        self.max_step,
+                    )
 
                     api_base = provider.provider_config.get("api_base", "")
                     for host in decoded_blocked:
@@ -320,7 +326,7 @@ class InternalAgentSubStage(Stage):
                                 run_live_agent(
                                     agent_runner,
                                     tts_provider,
-                                    self.max_step,
+                                    max_step,
                                     self.show_tool_use,
                                     self.show_tool_call_result,
                                     show_reasoning=self.show_reasoning,
@@ -351,7 +357,7 @@ class InternalAgentSubStage(Stage):
                             .set_async_stream(
                                 run_agent(
                                     agent_runner,
-                                    self.max_step,
+                                    max_step,
                                     self.show_tool_use,
                                     self.show_tool_call_result,
                                     show_reasoning=self.show_reasoning,
@@ -381,7 +387,7 @@ class InternalAgentSubStage(Stage):
                     else:
                         async for _ in run_agent(
                             agent_runner,
-                            self.max_step,
+                            max_step,
                             self.show_tool_use,
                             self.show_tool_call_result,
                             stream_to_general,

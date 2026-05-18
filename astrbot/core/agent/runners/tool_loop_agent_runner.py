@@ -256,6 +256,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         fallback_providers: list[Provider] | None = None,
         tool_result_overflow_dir: str | None = None,
         read_tool: FunctionTool | None = None,
+        tool_result_max_chars: int = 0,
         **kwargs: T.Any,
     ) -> None:
         self.req = request
@@ -269,6 +270,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self.custom_compressor = custom_compressor
         self.tool_result_overflow_dir = tool_result_overflow_dir
         self.read_tool = read_tool
+        self.tool_result_max_chars = max(0, int(tool_result_max_chars or 0))
         self._tool_result_token_counter = EstimateTokenCounter()
         # we will do compress when:
         # 1. before requesting LLM
@@ -488,6 +490,32 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 break
             preview = preview[:next_len]
         return preview
+
+    def _limit_inline_tool_result_chars(
+        self,
+        content: str,
+        max_chars: int | None = None,
+    ) -> str:
+        if max_chars is None:
+            max_chars = getattr(self, "tool_result_max_chars", 0)
+        if max_chars <= 0 or len(content) <= max_chars:
+            return content
+
+        suffix = f"\n[truncated: tool result exceeded {max_chars} chars]"
+        keep = max(0, max_chars - len(suffix))
+        return f"{content[:keep].rstrip()}{suffix}"[:max_chars]
+
+    def _remaining_tool_result_chars(
+        self,
+        tool_call_result_blocks: list[ToolCallMessageSegment],
+    ) -> int | None:
+        max_chars = getattr(self, "tool_result_max_chars", 0)
+        if max_chars <= 0:
+            return None
+        used_chars = sum(
+            len(str(block.content or "")) for block in tool_call_result_blocks
+        )
+        return max(0, max_chars - used_chars)
 
     async def _iter_llm_responses(
         self, *, include_model: bool = True
@@ -1061,11 +1089,21 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         logger.info(f"Agent 使用工具: {llm_response.tools_call_name}")
 
         def _append_tool_call_result(tool_call_id: str, content: str) -> None:
+            remaining_chars = self._remaining_tool_result_chars(tool_call_result_blocks)
+            if remaining_chars is None:
+                limited_content = content
+            elif remaining_chars <= 0:
+                limited_content = "[truncated: tool result context budget exhausted]"
+            else:
+                limited_content = self._limit_inline_tool_result_chars(
+                    content,
+                    remaining_chars,
+                )
             tool_call_result_blocks.append(
                 ToolCallMessageSegment(
                     role="tool",
                     tool_call_id=tool_call_id,
-                    content=self._merge_follow_up_notice(content),
+                    content=self._merge_follow_up_notice(limited_content),
                 ),
             )
 

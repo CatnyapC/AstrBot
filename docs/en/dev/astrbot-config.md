@@ -76,6 +76,9 @@ The default AstrBot configuration is as follows:
         "show_tool_use_status": False,
         "streaming_segmented": False,
         "max_agent_step": 30,
+        "local_model_id_prefixes": ["llama_cpp"],
+        "local_model_max_agent_step": 2,
+        "local_model_tool_result_max_chars": 1000,
         "tool_call_timeout": 120,
     },
     "provider_stt_settings": {
@@ -362,6 +365,18 @@ Whether platforms that don't support streaming responses should fall back to seg
 #### `provider_settings.max_agent_step`
 
 Limit on the maximum number of Agent steps. Default is `30`. Each tool call by the model counts as one step.
+
+#### `provider_settings.local_model_id_prefixes`
+
+Provider IDs, provider type/model pairs, or model names that start with these prefixes use local-model guardrails. Default is `["llama_cpp"]`.
+
+#### `provider_settings.local_model_max_agent_step`
+
+Extra tool-call step cap for local models. Default is `2`. Set to `0` to disable this extra cap.
+
+#### `provider_settings.local_model_tool_result_max_chars`
+
+Maximum total tool result characters inserted into the next LLM context per tool-call round for local models. Default is `1000`. Set to `0` to disable this extra cap.
 
 #### `provider_settings.tool_call_timeout`
 

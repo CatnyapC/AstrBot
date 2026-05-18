@@ -101,15 +101,31 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
         )
 
         if is_group and isinstance(session_id_int, int):
-            await bot.send_group_msg(group_id=session_id_int, message=messages)
+            return await bot.send_group_msg(group_id=session_id_int, message=messages)
         elif not is_group and isinstance(session_id_int, int):
-            await bot.send_private_msg(user_id=session_id_int, message=messages)
+            return await bot.send_private_msg(user_id=session_id_int, message=messages)
         elif isinstance(event, Event):  # 最后兜底
-            await bot.send(event=event, message=messages)
+            return await bot.send(event=event, message=messages)
         else:
             raise ValueError(
                 f"无法发送消息：缺少有效的数字 session_id({session_id}) 或 event({event})",
             )
+
+    @staticmethod
+    def _extract_sent_message_ids(send_result) -> list[str]:
+        if not isinstance(send_result, dict):
+            return []
+        candidates = (
+            send_result.get("message_id"),
+            send_result.get("real_id"),
+            send_result.get("msg_id"),
+        )
+        out: list[str] = []
+        for candidate in candidates:
+            value = str(candidate or "").strip()
+            if value and value not in out:
+                out.append(value)
+        return out
 
     @classmethod
     async def send_message(
@@ -119,7 +135,7 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
         event: Event | None = None,
         is_group: bool = False,
         session_id: str | None = None,
-    ) -> None:
+    ) -> list[str]:
         """发送消息至 QQ 协议端（aiocqhttp）。
 
         Args:
@@ -137,9 +153,10 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
         if not send_one_by_one:
             ret = await cls._parse_onebot_json(message_chain)
             if not ret:
-                return
-            await cls._dispatch_send(bot, event, is_group, session_id, ret)
-            return
+                return []
+            send_result = await cls._dispatch_send(bot, event, is_group, session_id, ret)
+            return cls._extract_sent_message_ids(send_result)
+        sent_message_ids: list[str] = []
         for seg in message_chain.chain:
             if isinstance(seg, Node | Nodes):
                 # 合并转发消息
@@ -151,19 +168,27 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
 
                 if is_group:
                     payload["group_id"] = session_id
-                    await bot.call_action("send_group_forward_msg", **payload)
+                    send_result = await bot.call_action("send_group_forward_msg", **payload)
                 else:
                     payload["user_id"] = session_id
-                    await bot.call_action("send_private_forward_msg", **payload)
+                    send_result = await bot.call_action("send_private_forward_msg", **payload)
+                sent_message_ids.extend(cls._extract_sent_message_ids(send_result))
             elif isinstance(seg, File):
                 d = await cls._from_segment_to_dict(seg)
-                await cls._dispatch_send(bot, event, is_group, session_id, [d])
+                send_result = await cls._dispatch_send(
+                    bot, event, is_group, session_id, [d]
+                )
+                sent_message_ids.extend(cls._extract_sent_message_ids(send_result))
             else:
                 messages = await cls._parse_onebot_json(MessageChain([seg]))
                 if not messages:
                     continue
-                await cls._dispatch_send(bot, event, is_group, session_id, messages)
+                send_result = await cls._dispatch_send(
+                    bot, event, is_group, session_id, messages
+                )
+                sent_message_ids.extend(cls._extract_sent_message_ids(send_result))
                 await asyncio.sleep(0.5)
+        return sent_message_ids
 
     async def send(self, message: MessageChain) -> None:
         """发送消息"""
@@ -172,13 +197,16 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
         is_group = bool(self.get_group_id())
         session_id = self.get_group_id() if is_group else self.get_sender_id()
 
-        await self.send_message(
+        sent_message_ids = await self.send_message(
             bot=self.bot,
             message_chain=message,
             event=event,  # 不强制要求一定是 Event
             is_group=is_group,
             session_id=session_id,
         )
+        if sent_message_ids:
+            self.set_extra("_onebot_sent_message_ids", sent_message_ids)
+            setattr(message, "_onebot_sent_message_ids", sent_message_ids)
         await super().send(message)
 
     async def send_streaming(

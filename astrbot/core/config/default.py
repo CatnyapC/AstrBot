@@ -151,6 +151,9 @@ DEFAULT_CONFIG = {
         "unsupported_streaming_strategy": "realtime_segmenting",
         "reachability_check": False,
         "max_agent_step": 30,
+        "local_model_id_prefixes": ["llama_cpp"],
+        "local_model_max_agent_step": 2,
+        "local_model_tool_result_max_chars": 1000,
         "tool_call_timeout": 120,
         "tool_schema_mode": "full",
         "llm_safety_mode": True,
@@ -2851,6 +2854,16 @@ CONFIG_METADATA_2 = {
                     "max_agent_step": {
                         "type": "int",
                     },
+                    "local_model_id_prefixes": {
+                        "type": "list",
+                        "items": {"type": "string"},
+                    },
+                    "local_model_max_agent_step": {
+                        "type": "int",
+                    },
+                    "local_model_tool_result_max_chars": {
+                        "type": "int",
+                    },
                     "tool_call_timeout": {
                         "type": "int",
                     },
@@ -3627,6 +3640,31 @@ CONFIG_METADATA_3 = {
                     "provider_settings.max_agent_step": {
                         "description": "工具调用轮数上限",
                         "type": "int",
+                        "condition": {
+                            "provider_settings.agent_runner_type": "local",
+                        },
+                    },
+                    "provider_settings.local_model_id_prefixes": {
+                        "description": "本地模型 ID 前缀",
+                        "type": "list",
+                        "items": {"type": "string"},
+                        "hint": "命中这些前缀的对话模型会使用本地模型保护策略。例：llama_cpp。",
+                        "condition": {
+                            "provider_settings.agent_runner_type": "local",
+                        },
+                    },
+                    "provider_settings.local_model_max_agent_step": {
+                        "description": "本地模型工具轮数上限",
+                        "type": "int",
+                        "hint": "仅对命中本地模型前缀的模型生效。0 表示不额外限制。",
+                        "condition": {
+                            "provider_settings.agent_runner_type": "local",
+                        },
+                    },
+                    "provider_settings.local_model_tool_result_max_chars": {
+                        "description": "本地模型工具结果字符上限",
+                        "type": "int",
+                        "hint": "限制单轮工具调用塞回下一轮 LLM 上下文的工具结果总字符数。0 表示不额外限制。",
                         "condition": {
                             "provider_settings.agent_runner_type": "local",
                         },

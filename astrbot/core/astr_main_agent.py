@@ -89,6 +89,9 @@ from astrbot.core.utils.astrbot_path import (
 )
 from astrbot.core.utils.file_extract import extract_file_moonshotai
 from astrbot.core.utils.llm_metadata import LLM_METADATAS
+from astrbot.core.utils.local_model_policy import (
+    resolve_local_model_tool_result_max_chars,
+)
 from astrbot.core.utils.media_utils import (
     IMAGE_COMPRESS_DEFAULT_MAX_SIZE,
     IMAGE_COMPRESS_DEFAULT_QUALITY,
@@ -1391,6 +1394,9 @@ async def build_main_agent(
         ),
         read_tool=(
             req.func_tool.get_tool("astrbot_file_read_tool") if req.func_tool else None
+        ),
+        tool_result_max_chars=resolve_local_model_tool_result_max_chars(
+            provider, config.provider_settings
         ),
     )
 
