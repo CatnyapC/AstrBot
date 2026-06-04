@@ -177,6 +177,7 @@ class TestAddActiveJob:
     async def test_add_active_job(self, cron_manager, mock_db, sample_cron_job):
         """Test adding an active agent cron job."""
         sample_cron_job.job_type = "active_agent"
+        sample_cron_job.payload = {"session": "test:group:123"}
         mock_db.create_cron_job.return_value = sample_cron_job
 
         result = await cron_manager.add_active_job(
@@ -189,10 +190,26 @@ class TestAddActiveJob:
         mock_db.create_cron_job.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_add_active_job_requires_session(self, cron_manager, mock_db):
+        """Test active agent cron jobs require a target session."""
+        with pytest.raises(
+            CronJobSchedulingError,
+            match="ActiveAgentCronJob requires payload.session",
+        ):
+            await cron_manager.add_active_job(
+                name="Missing Session",
+                cron_expression="0 9 * * *",
+                payload={"note": "wake"},
+            )
+
+        mock_db.create_cron_job.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_add_active_job_run_once(self, cron_manager, mock_db, sample_cron_job):
         """Test adding a run-once active job with an invalid returned job."""
         sample_cron_job.job_type = "active_agent"
         sample_cron_job.run_once = True
+        sample_cron_job.payload = {"session": "test:group:123"}
         mock_db.create_cron_job.return_value = sample_cron_job
 
         run_at = datetime.now(timezone.utc) + timedelta(days=30)
@@ -412,7 +429,10 @@ class TestScheduleJob:
             cron_expression=None,
             enabled=True,
             run_once=True,
-            payload={"run_at": future_date.isoformat()},
+            payload={
+                "session": "test:group:123",
+                "run_at": future_date.isoformat(),
+            },
         )
         mock_db = cron_manager.db
         mock_db.list_cron_jobs = AsyncMock(return_value=[])

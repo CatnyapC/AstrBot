@@ -110,6 +110,7 @@ class CronJobManager:
         run_once: bool = False,
         run_at: datetime | None = None,
     ) -> CronJob:
+        self._validate_active_job_payload(payload)
         # If run_once with run_at, store run_at in payload for later reference.
         if run_once and run_at:
             payload = {**payload, "run_at": run_at.isoformat()}
@@ -149,11 +150,21 @@ class CronJobManager:
         if self.scheduler.get_job(job_id):
             self.scheduler.remove_job(job_id)
 
+    @staticmethod
+    def _validate_active_job_payload(payload: dict | None) -> None:
+        if not isinstance(payload, dict):
+            raise CronJobSchedulingError("ActiveAgentCronJob requires payload.")
+        session = str(payload.get("session") or "").strip()
+        if not session:
+            raise CronJobSchedulingError("ActiveAgentCronJob requires payload.session.")
+
     def _schedule_job(self, job: CronJob) -> None:
         if not self._started:
             self.scheduler.start()
             self._started = True
         try:
+            if job.job_type == "active_agent":
+                self._validate_active_job_payload(job.payload)
             tzinfo = None
             if job.timezone:
                 try:
@@ -190,7 +201,7 @@ class CronJobManager:
                     job.job_id, next_run_time=self._get_next_run_time(job.job_id)
                 )
             )
-        except (ValueError, TypeError) as e:
+        except (ValueError, TypeError, CronJobSchedulingError) as e:
             logger.exception("Failed to schedule cron job %s", job.job_id)
             raise CronJobSchedulingError(str(e)) from e
 
@@ -245,6 +256,7 @@ class CronJobManager:
 
     async def _run_active_agent_job(self, job: CronJob, start_time: datetime) -> None:
         payload = job.payload or {}
+        self._validate_active_job_payload(payload)
         session_str = payload.get("session")
         if not session_str:
             raise ValueError("ActiveAgentCronJob missing session.")
