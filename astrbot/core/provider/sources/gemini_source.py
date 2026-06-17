@@ -3,7 +3,6 @@ import base64
 import json
 import logging
 import random
-import re
 import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -46,52 +45,6 @@ logging.getLogger("google_genai.types").addFilter(SuppressNonTextPartsWarning())
     "Google Gemini Chat Completion 提供商适配器",
 )
 class ProviderGoogleGenAI(Provider):
-    LEAKED_REASONING_MARKERS = (
-        "Draft 1:",
-        "Draft 2:",
-        "Draft 3:",
-        "Shortened Draft:",
-        "Trimmed:",
-        "Revised:",
-        "Selected response:",
-        "Final Polish:",
-        "Final Version:",
-        "Final Answer:",
-        "Final Answer Construction:",
-        "Check length:",
-        "Count:",
-        "No quotes?",
-        "Call user:",
-        "Call self:",
-        "Character (",
-        "Current state:",
-        "Goal:",
-    )
-    LEAKED_REASONING_FRAGMENTS = (
-        "Draft",
-        "Shortened Draft",
-        "Trimmed",
-        "Revised",
-        "Selected response",
-        "Final Polish",
-        "Final Version",
-        "Final Answer",
-        "Final Answer Construction",
-        "Check length",
-        "Count:",
-        "No quotes",
-        "Call user",
-        "Call self",
-        "Character (",
-        "Current state",
-        "Goal:",
-        "Wait, let's",
-        "Actually,",
-        "Let's check",
-        "One more check",
-        "Final check",
-    )
-
     CATEGORY_MAPPING = {
         "harassment": types.HarmCategory.HARM_CATEGORY_HARASSMENT,
         "hate_speech": types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
@@ -176,221 +129,6 @@ class ProviderGoogleGenAI(Provider):
             if (threshold_str := user_safety_config.get(config_key))
             and threshold_str in self.THRESHOLD_MAPPING
         ]
-
-    def _get_custom_extra_body(self) -> dict:
-        extra_body = self.provider_config.get("custom_extra_body", {})
-        if not isinstance(extra_body, dict):
-            return {}
-        return dict(extra_body)
-
-    def _normalize_custom_config_kwargs(self, config_kwargs: dict) -> dict:
-        extra_body = self._get_custom_extra_body()
-        if "max_tokens" in extra_body and "max_output_tokens" not in extra_body:
-            extra_body["max_output_tokens"] = extra_body.pop("max_tokens")
-        config_kwargs.update(extra_body)
-        return config_kwargs
-
-    @staticmethod
-    def _dedupe_repeated_text(text: str) -> str:
-        stripped = text.strip()
-        half = len(stripped) // 2
-        if half > 0 and len(stripped) % 2 == 0 and stripped[:half] == stripped[half:]:
-            return stripped[:half].strip()
-        return stripped
-
-    @classmethod
-    def _sanitize_leaked_reasoning_text(cls, text: str) -> str:
-        stripped = text.strip()
-        if not stripped:
-            return stripped
-
-        gemma_channel_answer = cls._extract_gemma_channel_answer(stripped)
-        if gemma_channel_answer:
-            return cls._dedupe_repeated_text(gemma_channel_answer)
-
-        if not cls._looks_like_leaked_reasoning(stripped):
-            return cls._dedupe_repeated_text(stripped)
-
-        final_block_match = re.search(
-            r"(?:Final Answer Construction:|Final Version:|Final Answer:)\s*(.+)$",
-            stripped,
-            flags=re.S,
-        )
-        if final_block_match:
-            tail = final_block_match.group(1).strip()
-            tail_lines = [line.strip() for line in tail.splitlines() if line.strip()]
-            for line in tail_lines:
-                if line.startswith("*"):
-                    continue
-                if cls._looks_like_leaked_reasoning(line):
-                    continue
-                cleaned = cls._strip_instruction_prefix(line.lstrip(":'\"“”").strip())
-                if cleaned and not cls._looks_like_instructional_text(cleaned):
-                    return cls._dedupe_repeated_text(cleaned)
-
-        revised_match = re.search(
-            r"(?:Revised:|Final Polish:)\s*(.+)$",
-            stripped,
-            flags=re.S,
-        )
-        if revised_match:
-            tail = revised_match.group(1).strip()
-            tail_lines = [line.strip() for line in tail.splitlines() if line.strip()]
-            for line in tail_lines:
-                if cls._looks_like_leaked_reasoning(line):
-                    continue
-                cleaned = cls._strip_instruction_prefix(line)
-                if cleaned and not cls._looks_like_instructional_text(cleaned):
-                    return cls._dedupe_repeated_text(cleaned)
-
-        quoted_candidates: list[str] = []
-        for match in re.findall(r"[\"“](.*?)[\"”]", stripped, flags=re.S):
-            candidate = cls._strip_instruction_prefix(" ".join(match.split()).strip())
-            if (
-                candidate
-                and len(candidate) <= 200
-                and not any(
-                    marker in candidate for marker in cls.LEAKED_REASONING_MARKERS
-                )
-                and not cls._looks_like_instructional_text(candidate)
-            ):
-                quoted_candidates.append(candidate)
-
-        if quoted_candidates:
-            return cls._dedupe_repeated_text(quoted_candidates[-1])
-
-        cleaned_lines: list[str] = []
-        for line in stripped.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith("*"):
-                continue
-            if any(marker in line for marker in cls.LEAKED_REASONING_MARKERS):
-                continue
-            if line.startswith("Wait,") or line.startswith("Actually,"):
-                continue
-            line = cls._strip_instruction_prefix(line)
-            if line and not cls._looks_like_instructional_text(line):
-                cleaned_lines.append(line)
-
-        if cleaned_lines:
-            return cls._dedupe_repeated_text(cleaned_lines[-1])
-
-        return cls._dedupe_repeated_text(stripped)
-
-    @classmethod
-    def _extract_gemma_channel_answer(cls, text: str) -> str | None:
-        stripped = text.strip()
-        if "<|channel>" not in stripped and "<channel|>" not in stripped:
-            return None
-
-        normalized = stripped.replace("<|think|>", "").strip()
-        if "<channel|>" in normalized:
-            tail = normalized.rsplit("<channel|>", maxsplit=1)[-1].strip()
-            if (
-                tail
-                and "<|channel>" not in tail
-                and "<channel|>" not in tail
-                and not cls._looks_like_instructional_text(tail)
-            ):
-                return tail
-
-        without_thought_blocks = re.sub(
-            r"<\|channel\>\s*thought\s*(?:\r?\n)?[\s\S]*?<channel\|>",
-            "",
-            normalized,
-            flags=re.I,
-        ).strip()
-        without_tokens = re.sub(
-            r"<\|channel\>\s*thought\s*|<\|channel\>|<channel\|>",
-            "",
-            without_thought_blocks,
-            flags=re.I,
-        ).strip()
-        if without_tokens and not cls._looks_like_instructional_text(without_tokens):
-            return without_tokens
-        return None
-
-    @classmethod
-    def _looks_like_leaked_reasoning(cls, text: str) -> bool:
-        stripped = text.strip()
-        if not stripped:
-            return False
-        if any(marker in stripped for marker in cls.LEAKED_REASONING_MARKERS):
-            return True
-        lowered = stripped.lower()
-        return any(
-            fragment.lower() in lowered for fragment in cls.LEAKED_REASONING_FRAGMENTS
-        )
-
-    @staticmethod
-    def _looks_like_instructional_text(text: str) -> bool:
-        stripped = text.strip()
-        if not stripped:
-            return False
-
-        lowered = stripped.lower()
-        if any(
-            fragment in lowered
-            for fragment in (
-                "prompt says",
-                "word count",
-                "for self",
-                "for user",
-                "no reasoning",
-                "no repetition",
-                "at the end",
-            )
-        ):
-            return True
-
-        if "【" in stripped and "】" in stripped:
-            return False
-
-        return any(
-            stripped.startswith(prefix)
-            for prefix in (
-                "不要",
-                "禁止",
-                "请",
-                "需要",
-                "必须",
-                "应",
-                "应该",
-                "总字数",
-                "动作描写",
-                "在发言中",
-                "称呼自己",
-            )
-        )
-
-    @staticmethod
-    def _summarize_text_for_log(text: str, limit: int = 240) -> str:
-        compact = " ".join(text.split())
-        if len(compact) <= limit:
-            return compact
-        return f"{compact[:limit]}..."
-
-    @staticmethod
-    def _should_buffer_full_response_text(model_name: str) -> bool:
-        return model_name.startswith("gemma-")
-
-    @staticmethod
-    def _should_force_non_stream_response(model_name: str) -> bool:
-        return model_name.startswith("gemma-")
-
-    @staticmethod
-    def _strip_instruction_prefix(text: str) -> str:
-        stripped = text.strip().strip('"“”')
-        patterns = [
-            r"^不要使用中文引号、英文引号包裹整句台词[。！!？?\s]*",
-            r"^不要使用[^。！!？?\n]*[。！!？?\s]+",
-            r"^The draft is fine[。.!?\s]*",
-        ]
-        for pattern in patterns:
-            stripped = re.sub(pattern, "", stripped, flags=re.I)
-        return stripped.strip()
 
     async def _handle_api_error(self, e: APIError, keys: list[str]) -> bool:
         """处理API错误，返回是否需要重试"""
@@ -530,7 +268,6 @@ class ProviderGoogleGenAI(Provider):
             )
             if thinking_budget is not None:
                 thinking_config = types.ThinkingConfig(
-                    include_thoughts=False,
                     thinking_budget=thinking_budget,
                 )
         elif any(model_name.startswith(p) for p in ("gemini-3-", "gemini-3.")):
@@ -549,44 +286,37 @@ class ProviderGoogleGenAI(Provider):
                     )
                     thinking_level = "HIGH"
                 level = types.ThinkingLevel(thinking_level)
-                thinking_config = types.ThinkingConfig(include_thoughts=False)
+                thinking_config = types.ThinkingConfig()
                 if not hasattr(types.ThinkingConfig, "thinking_level"):
                     setattr(types.ThinkingConfig, "thinking_level", level)
                 else:
                     thinking_config.thinking_level = level
-        elif model_name.startswith("gemma-"):
-            thinking_config = types.ThinkingConfig(include_thoughts=False)
 
-        config_kwargs = self._normalize_custom_config_kwargs(
-            {
-                "system_instruction": system_instruction,
-                "temperature": temperature,
-                "max_output_tokens": payloads.get("max_tokens")
-                or payloads.get("maxOutputTokens"),
-                "top_p": payloads.get("top_p") or payloads.get("topP"),
-                "top_k": payloads.get("top_k") or payloads.get("topK"),
-                "frequency_penalty": payloads.get("frequency_penalty")
-                or payloads.get("frequencyPenalty"),
-                "presence_penalty": payloads.get("presence_penalty")
-                or payloads.get("presencePenalty"),
-                "stop_sequences": payloads.get("stop") or payloads.get("stopSequences"),
-                "response_logprobs": payloads.get("response_logprobs")
-                or payloads.get("responseLogprobs"),
-                "logprobs": payloads.get("logprobs"),
-                "seed": payloads.get("seed"),
-                "response_modalities": modalities,
-                "tools": cast(types.ToolListUnion | None, tool_list),
-                "tool_config": tool_config,
-                "safety_settings": self.safety_settings
-                if self.safety_settings
-                else None,
-                "thinking_config": thinking_config,
-                "automatic_function_calling": types.AutomaticFunctionCallingConfig(
-                    disable=True,
-                ),
-            }
+        return types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=temperature,
+            max_output_tokens=payloads.get("max_tokens")
+            or payloads.get("maxOutputTokens"),
+            top_p=payloads.get("top_p") or payloads.get("topP"),
+            top_k=payloads.get("top_k") or payloads.get("topK"),
+            frequency_penalty=payloads.get("frequency_penalty")
+            or payloads.get("frequencyPenalty"),
+            presence_penalty=payloads.get("presence_penalty")
+            or payloads.get("presencePenalty"),
+            stop_sequences=payloads.get("stop") or payloads.get("stopSequences"),
+            response_logprobs=payloads.get("response_logprobs")
+            or payloads.get("responseLogprobs"),
+            logprobs=payloads.get("logprobs"),
+            seed=payloads.get("seed"),
+            response_modalities=modalities,
+            tools=cast(types.ToolListUnion | None, tool_list),
+            tool_config=tool_config,
+            safety_settings=self.safety_settings if self.safety_settings else None,
+            thinking_config=thinking_config,
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                disable=True,
+            ),
         )
-        return types.GenerateContentConfig(**config_kwargs)
 
     def _prepare_conversation(self, payloads: dict) -> list[types.Content]:
         """准备 Gemini SDK 的 Content 列表"""
@@ -748,34 +478,6 @@ class ProviderGoogleGenAI(Provider):
         )
 
     @staticmethod
-    def _is_prohibited_prompt_feedback_block(
-        result: types.GenerateContentResponse | None,
-    ) -> bool:
-        if result is None:
-            return False
-
-        prompt_feedback = getattr(result, "prompt_feedback", None)
-        block_reason = getattr(prompt_feedback, "block_reason", None)
-        if block_reason is None:
-            return False
-
-        reason_value = getattr(block_reason, "value", block_reason)
-        if isinstance(reason_value, str):
-            return reason_value.upper().endswith("PROHIBITED_CONTENT")
-        return str(block_reason).upper().endswith("PROHIBITED_CONTENT")
-
-    @classmethod
-    def _log_empty_candidates_response(
-        cls,
-        result: types.GenerateContentResponse | None,
-    ) -> None:
-        message = f"请求失败, 返回的 candidates 为空: {result}"
-        if cls._is_prohibited_prompt_feedback_block(result):
-            logger.warning(message)
-            return
-        logger.error(message)
-
-    @staticmethod
     def _ensure_usable_response(
         llm_response: LLMResponse,
         *,
@@ -855,15 +557,12 @@ class ProviderGoogleGenAI(Provider):
         ):
             chain.append(Comp.Plain("这是图片"))
         for part in result_parts:
+            # Skip thinking parts — their text is already captured via
+            # _extract_reasoning_content above.  Including them here would
+            # leak the model's internal reasoning into the user-facing message,
+            # which also causes duplicate/triple replies on some platforms.
             if part.text and not part.thought:
-                sanitized_text = self._sanitize_leaked_reasoning_text(part.text)
-                if sanitized_text != part.text.strip():
-                    logger.warning(
-                        "[Gemini] 检测到疑似推理泄漏，已对正文进行清洗。"
-                        f" 清洗前文本预览: {self._summarize_text_for_log(part.text)!r}"
-                    )
-                if sanitized_text:
-                    chain.append(Comp.Plain(sanitized_text))
+                chain.append(Comp.Plain(part.text))
 
             if (
                 part.function_call
@@ -939,7 +638,7 @@ class ProviderGoogleGenAI(Provider):
                 logger.debug(f"genai result: {result}")
 
                 if not result.candidates:
-                    self._log_empty_candidates_response(result)
+                    logger.error(f"请求失败, 返回的 candidates 为空: {result}")
                     raise Exception("请求失败, 返回的 candidates 为空。")
 
                 if result.candidates[0].finish_reason == types.FinishReason.RECITATION:
@@ -1001,7 +700,6 @@ class ProviderGoogleGenAI(Provider):
         )
         model = payloads.get("model", self.get_model())
         conversation = self._prepare_conversation(payloads)
-        buffer_text_until_final = self._should_buffer_full_response_text(model)
 
         result = None
         while True:
@@ -1035,10 +733,8 @@ class ProviderGoogleGenAI(Provider):
 
         # Accumulate the complete response text for the final response
         accumulated_text = ""
-        accumulated_raw_text = ""
         accumulated_reasoning = ""
         final_response = None
-        suppress_stream_text = buffer_text_until_final
 
         async for chunk in result:
             llm_response = LLMResponse("assistant", is_chunk=True)
@@ -1075,21 +771,9 @@ class ProviderGoogleGenAI(Provider):
                 accumulated_reasoning += reasoning
                 llm_response.reasoning_content = reasoning
             if chunk.text:
-                sanitized_chunk_text = self._sanitize_leaked_reasoning_text(chunk.text)
-                accumulated_raw_text += chunk.text
-                if (
-                    sanitized_chunk_text != chunk.text.strip()
-                    or self._looks_like_leaked_reasoning(chunk.text)
-                    or self._looks_like_leaked_reasoning(accumulated_raw_text)
-                ):
-                    suppress_stream_text = True
-                if not suppress_stream_text:
-                    if sanitized_chunk_text:
-                        _f = True
-                        accumulated_text += sanitized_chunk_text
-                        llm_response.result_chain = MessageChain(
-                            chain=[Comp.Plain(sanitized_chunk_text)]
-                        )
+                _f = True
+                accumulated_text += chunk.text
+                llm_response.result_chain = MessageChain(chain=[Comp.Plain(chunk.text)])
             if _f:
                 yield llm_response
 
@@ -1117,10 +801,6 @@ class ProviderGoogleGenAI(Provider):
             final_response.reasoning_content = accumulated_reasoning
 
         # Set the complete accumulated text in the final response
-        if accumulated_raw_text:
-            accumulated_text = self._sanitize_leaked_reasoning_text(
-                accumulated_raw_text
-            )
         if accumulated_text:
             final_response.result_chain = MessageChain(
                 chain=[Comp.Plain(accumulated_text)],
@@ -1244,13 +924,6 @@ class ProviderGoogleGenAI(Provider):
         payloads = {"messages": context_query, "model": model}
         if func_tool and not func_tool.empty():
             payloads["tool_choice"] = tool_choice
-
-        if self._should_force_non_stream_response(model):
-            logger.info(
-                f"[Gemini] {model} 已强制使用非流式响应，以避免思考内容经由正文流式泄漏"
-            )
-            yield await self._query(payloads, func_tool)
-            return
 
         retry = 10
         keys = self.api_keys.copy()

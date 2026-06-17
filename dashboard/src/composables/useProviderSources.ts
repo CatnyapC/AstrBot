@@ -134,11 +134,26 @@ export function useProviderSources(options: UseProviderSourcesOptions) {
     })
   })
 
+  function buildMetadataFromProvider(provider: any) {
+    if (!provider) return null
+    const mods = provider.modalities || []
+    if (!mods.length && !provider.max_context_tokens) return null
+    const input: string[] = []
+    if (mods.includes('image')) input.push('image')
+    if (mods.includes('audio')) input.push('audio')
+    return {
+      modalities: { input },
+      tool_call: mods.includes('tool_use'),
+      reasoning: Boolean(provider.reasoning),
+      limit: { context: provider.max_context_tokens || 0 }
+    }
+  }
+
   const mergedModelEntries = computed(() => {
     const configuredEntries = (sourceProviders.value || []).map((provider: any) => ({
       type: 'configured',
       provider,
-      metadata: getModelMetadata(provider.model)
+      metadata: getModelMetadata(provider.model) || buildMetadataFromProvider(provider)
     }))
 
     const availableEntries = (sortedAvailableModels.value || [])
@@ -323,9 +338,6 @@ export function useProviderSources(options: UseProviderSourcesOptions) {
       anthropic_chat_completion: 'chat_completion',
       googlegenai_chat_completion: 'chat_completion',
       zhipu_chat_completion: 'chat_completion',
-      inception_chat_completion: 'chat_completion',
-      dashscope_coding_openai_chat_completion: 'chat_completion',
-      dashscope_coding_anthropic_chat_completion: 'chat_completion',
       dify: 'agent_runner',
       coze: 'agent_runner',
       dashscope: 'chat_completion',
@@ -578,7 +590,8 @@ export function useProviderSources(options: UseProviderSourcesOptions) {
       model: modelName,
       modalities,
       custom_extra_body: {},
-      max_context_tokens: max_context_tokens
+      max_context_tokens: max_context_tokens,
+      reasoning: supportsReasoning(metadata)
     }
   }
 

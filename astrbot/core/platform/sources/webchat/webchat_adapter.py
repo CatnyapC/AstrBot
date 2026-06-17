@@ -49,7 +49,7 @@ class QueueListener:
         self.stop_event = stop_event
 
     async def run(self) -> None:
-        """Register callback and keep adapter task alive until terminated."""
+        """Register callback and keep adapter task alive."""
         self.webchat_queue_mgr.set_listener(self.callback)
         try:
             await self.stop_event.wait()

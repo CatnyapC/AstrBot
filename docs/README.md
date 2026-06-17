@@ -1,3 +1,4 @@
+
 # AstrBot
 _✨ 易上手的多平台 LLM 聊天机器人及开发框架（的官方文档） ✨_
 
@@ -7,8 +8,3 @@ _✨ 易上手的多平台 LLM 聊天机器人及开发框架（的官方文档�
 
 ![image](https://github.com/user-attachments/assets/48f72a71-9456-4166-bbd2-f2a6c8cd740f)
 
-## Agent Documentation Map
-
-- `features/`: user-facing or system-facing product capabilities, behavior, and implementation notes.
-
-Lookup flow: pick the matching category, open its `README.md`, then open the concrete document needed.

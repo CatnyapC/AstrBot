@@ -367,24 +367,16 @@ class ProviderManager:
                 from .sources.minimax_token_plan_source import (
                     ProviderMiniMaxTokenPlan as ProviderMiniMaxTokenPlan,
                 )
+            case "xiaomi_chat_completion":
+                from .sources.xiaomi_source import ProviderXiaomi as ProviderXiaomi
+            case "xiaomi_token_plan":
+                from .sources.xiaomi_token_plan_source import (
+                    ProviderXiaomiTokenPlan as ProviderXiaomiTokenPlan,
+                )
             case "zhipu_chat_completion":
                 from .sources.zhipu_source import ProviderZhipu as ProviderZhipu
-            case "minimax_chat_completion":
-                from .sources.minimax_source import ProviderMiniMax as ProviderMiniMax
             case "groq_chat_completion":
                 from .sources.groq_source import ProviderGroq as ProviderGroq
-            case "inception_chat_completion":
-                from .sources.inception_source import (
-                    ProviderInception as ProviderInception,
-                )
-            case "dashscope_coding_openai_chat_completion":
-                from .sources.dashscope_coding_openai_source import (
-                    ProviderDashScopeCodingOpenAI as ProviderDashScopeCodingOpenAI,
-                )
-            case "dashscope_coding_anthropic_chat_completion":
-                from .sources.dashscope_coding_anthropic_source import (
-                    ProviderDashScopeCodingAnthropic as ProviderDashScopeCodingAnthropic,
-                )
             case "xai_chat_completion":
                 from .sources.xai_source import ProviderXAI as ProviderXAI
             case "aihubmix_chat_completion":

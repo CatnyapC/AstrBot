@@ -245,7 +245,8 @@ class ResultDecorateStage(Stage):
                             for seg in split_response:
                                 if self.content_cleanup_rule:
                                     seg = re.sub(self.content_cleanup_rule, "", seg)
-                                if seg.strip():
+                                seg = seg.strip()
+                                if seg:
                                     new_chain.append(Plain(seg))
                         else:
                             # 非 Plain 类型的消息段不分段
@@ -257,14 +258,14 @@ class ResultDecorateStage(Stage):
                 event.unified_msg_origin,
             )
 
-            tts_enabled_for_result = (
+            should_tts = (
                 bool(self.ctx.astrbot_config["provider_tts_settings"]["enable"])
                 and result.is_llm_result()
                 and await SessionServiceManager.should_process_tts_request(event)
                 and random.random() <= self.tts_trigger_probability
+                and tts_provider
             )
-            should_tts = tts_enabled_for_result and tts_provider
-            if tts_enabled_for_result and not tts_provider:
+            if should_tts and not tts_provider:
                 logger.warning(
                     f"会话 {event.unified_msg_origin} 未配置文本转语音模型。",
                 )
@@ -368,7 +369,7 @@ class ResultDecorateStage(Stage):
                         return
                     if time.time() - render_start > 3:
                         logger.warning(
-                            "文本转图片耗时超过了 3 秒，如果觉得很慢可以使用 /t2i 关闭文本转图片模式。",
+                            "文本转图片耗时超过了 3 秒，如果觉得很慢可以在 WebUI 中关闭文本转图片模式。",
                         )
                     if url:
                         if url.startswith("http"):

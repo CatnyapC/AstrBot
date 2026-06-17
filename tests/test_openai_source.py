@@ -1,5 +1,6 @@
-import asyncio
+import base64
 import builtins
+from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
@@ -113,23 +114,6 @@ def test_create_http_client_falls_back_to_global_httpx_module(monkeypatch):
     provider._create_http_client({"proxy": ""})
 
     assert captured["httpx_module"] is openai_source_module.httpx
-
-
-@pytest.mark.asyncio
-async def test_prepare_chat_payload_drops_runtime_only_kwargs():
-    provider = _make_provider()
-    try:
-        payloads, _ = await provider._prepare_chat_payload(
-            prompt=None,
-            contexts=[{"role": "user", "content": "hello"}],
-            abort_signal=asyncio.Event(),
-            temperature=0.2,
-        )
-
-        assert "abort_signal" not in payloads
-        assert payloads["temperature"] == 0.2
-    finally:
-        await provider.terminate()
 
 
 @pytest.mark.asyncio
@@ -1044,6 +1028,27 @@ async def test_resolve_image_part_supports_base64_scheme():
         assert await provider._resolve_image_part("base64://abcd") == {
             "type": "image_url",
             "image_url": {"url": "data:image/jpeg;base64,abcd"},
+        }
+    finally:
+        await provider.terminate()
+
+
+@pytest.mark.asyncio
+async def test_resolve_image_part_preserves_base64_png_mime_type():
+    provider = _make_provider()
+    try:
+        image_buffer = BytesIO()
+        PILImage.new("RGBA", (1, 1), (255, 0, 0, 255)).save(
+            image_buffer,
+            format="PNG",
+        )
+        image_base64 = base64.b64encode(image_buffer.getvalue()).decode("ascii")
+
+        image_part = await provider._resolve_image_part(f"base64://{image_base64}")
+
+        assert image_part == {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{image_base64}"},
         }
     finally:
         await provider.terminate()

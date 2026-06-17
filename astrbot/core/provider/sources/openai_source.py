@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import binascii
 import copy
 import inspect
 import json
@@ -48,14 +49,6 @@ from astrbot.core.utils.string_utils import normalize_and_dedupe_strings
 
 from ..register import register_provider_adapter
 
-_RETRYABLE_PROVIDER_ERROR_MAX_RETRIES = 3
-_RETRYABLE_PROVIDER_ERROR_BACKOFF_SEC = (1.0, 2.0)
-_RUNTIME_ONLY_CHAT_KWARGS = frozenset({"abort_signal"})
-
-
-class EmptyOrMalformedCompletionError(Exception):
-    """OpenAI-compatible payload missing required completion fields."""
-
 
 @register_provider_adapter(
     "openai_chat_completion",
@@ -63,6 +56,17 @@ class EmptyOrMalformedCompletionError(Exception):
 )
 class ProviderOpenAIOfficial(Provider):
     _ERROR_TEXT_CANDIDATE_MAX_CHARS = 4096
+    # 部分 OpenAI 兼容中转站会校验 data URL 的 MIME 类型是否和图片字节一致。
+    # 这里统一维护格式映射，确保本地文件和 `base64://` 图片引用使用相同声明。
+    _IMAGE_FORMAT_MIME_TYPES = {
+        "JPEG": "image/jpeg",
+        "PNG": "image/png",
+        "GIF": "image/gif",
+        "WEBP": "image/webp",
+        "BMP": "image/bmp",
+        "TIFF": "image/tiff",
+        "AVIF": "image/avif",
+    }
 
     @classmethod
     def _truncate_error_text_candidate(cls, text: str) -> str:
@@ -203,24 +207,54 @@ class ProviderOpenAIOfficial(Provider):
                 raise
             return None
 
-        try:
-            with PILImage.open(BytesIO(image_bytes)) as image:
-                image.verify()
-                image_format = str(image.format or "").upper()
-        except (OSError, UnidentifiedImageError):
+        image_format = cls._detect_image_format(image_bytes)
+        if image_format is None:
             if mode == "strict":
                 raise ValueError(f"Invalid image file: {image_path}")
             return None
 
-        mime_type = {
-            "JPEG": "image/jpeg",
-            "PNG": "image/png",
-            "GIF": "image/gif",
-            "WEBP": "image/webp",
-            "BMP": "image/bmp",
-        }.get(image_format, "image/jpeg")
+        mime_type = cls._image_format_to_mime_type(image_format)
         image_bs64 = base64.b64encode(image_bytes).decode("utf-8")
         return f"data:{mime_type};base64,{image_bs64}"
+
+    @classmethod
+    def _detect_image_format(cls, image_bytes: bytes) -> str | None:
+        """返回 Pillow 校验后的图片格式，非法图片返回 None。"""
+        try:
+            # verify() 只校验图片容器，不完整解码像素。
+            # 这里仅需要可信的格式标签，因此这种方式足够且开销较小。
+            with PILImage.open(BytesIO(image_bytes)) as image:
+                image.verify()
+                return str(image.format or "").upper()
+        except (OSError, UnidentifiedImageError):
+            return None
+
+    @classmethod
+    def _image_format_to_mime_type(cls, image_format: str | None) -> str:
+        """将 Pillow 图片格式映射为 data URL 使用的 MIME 类型。"""
+        # 未识别格式保持历史 JPEG 兜底，兼容传入任意 `base64://` 内容的旧调用方。
+        return cls._IMAGE_FORMAT_MIME_TYPES.get(
+            str(image_format or "").upper(), "image/jpeg"
+        )
+
+    @classmethod
+    def _base64_image_ref_to_data_url(cls, image_ref: str) -> str:
+        """将 `base64://` 图片引用转换为带真实 MIME 的 data URL。"""
+        raw_base64 = image_ref.removeprefix("base64://")
+        mime_type = "image/jpeg"
+        try:
+            # 平台适配器可能通过 `base64://` 传入 PNG/GIF/WebP 等图片字节，
+            # 但不会额外携带 MIME 元数据。发送 OpenAI 请求前先识别真实格式，
+            # 避免把 PNG 等图片错误声明为 JPEG。
+            image_bytes = base64.b64decode(raw_base64)
+        except (binascii.Error, ValueError):
+            # 对错误或非图片 base64 保持旧行为：继续返回 JPEG data URL，
+            # 避免让历史调用方因为格式识别失败而直接抛异常。
+            pass
+        else:
+            image_format = cls._detect_image_format(image_bytes)
+            mime_type = cls._image_format_to_mime_type(image_format)
+        return f"data:{mime_type};base64,{raw_base64}"
 
     @staticmethod
     def _file_uri_to_path(file_uri: str) -> str:
@@ -250,7 +284,7 @@ class ProviderOpenAIOfficial(Provider):
         mode: Literal["safe", "strict"] = "safe",
     ) -> str | None:
         if image_ref.startswith("base64://"):
-            return image_ref.replace("base64://", "data:image/jpeg;base64,")
+            return self._base64_image_ref_to_data_url(image_ref)
 
         if image_ref.startswith("http"):
             image_path = await download_image_by_url(image_ref)
@@ -558,8 +592,9 @@ class ProviderOpenAIOfficial(Provider):
 
             content = msg.get("content")
             tool_calls = msg.get("tool_calls")
+            reasoning_content = msg.get("reasoning_content")
 
-            if _is_empty(content) and not tool_calls:
+            if _is_empty(content) and not tool_calls and not reasoning_content:
                 logger.warning(f"过滤第 {idx} 条空 assistant 消息 (无工具调用)")
                 continue
 
@@ -677,10 +712,16 @@ class ProviderOpenAIOfficial(Provider):
                     # Gemini and some OpenAI-compatible proxies omit this field
                     if not hasattr(tc, "index") or tc.index is None:
                         tc.index = idx
-            try:
-                state.handle_chunk(chunk)
-            except Exception as e:
-                logger.warning("Saving chunk state error: " + str(e))
+            # 跳过 delta=None 的 chunk，避免 SDK 内部 _convert_initial_chunk_into_snapshot
+            # 第 747 行 choice.delta.to_dict() 抛出 NoneType 错误。
+            # refs: AstrBot#6689 / openai-python#5069 / #5047
+            # 例外：流末尾的 usage chunk（choices=[]，delta=None 但有 usage 数据）
+            # 需要传给 state，否则最终 completion 会丢失 usage 信息
+            if delta is not None or chunk.usage:
+                try:
+                    state.handle_chunk(chunk)
+                except Exception as e:
+                    logger.error("Saving chunk state error: " + str(e))
             # logger.debug(f"chunk delta: {delta}")
             # handle the content delta
             reasoning = self._extract_reasoning_content(chunk)
@@ -708,10 +749,14 @@ class ProviderOpenAIOfficial(Provider):
             if _y:
                 yield llm_response
 
-        final_completion = state.get_final_completion()
-        llm_response = await self._parse_openai_completion(final_completion, tools)
-
-        yield llm_response
+        try:
+            final_completion = state.get_final_completion()
+            llm_response = await self._parse_openai_completion(final_completion, tools)
+            yield llm_response
+        except Exception as e:
+            logger.error("get_final_completion error: " + str(e))
+            # 流式内容已通过 yield 发出，记录错误后正常结束即可
+            return
 
     def _extract_reasoning_content(
         self,
@@ -727,18 +772,13 @@ class ProviderOpenAIOfficial(Provider):
             attr = getattr(obj, self.reasoning_key, None)
             return None if attr is None else str(attr)
 
-        choices = self._coerce_choices(
-            completion,
-            field_name="completion.choices",
-            allow_missing=True,
-        )
-        if len(choices) == 0:
+        if not completion.choices:
             return None
         if isinstance(completion, ChatCompletion):
-            choice = choices[0]
+            choice = completion.choices[0]
             reasoning_attr = _get_reasoning_attr(choice.message)
         elif isinstance(completion, ChatCompletionChunk):
-            delta = choices[0].delta
+            delta = completion.choices[0].delta
             reasoning_attr = _get_reasoning_attr(delta)
         else:
             return None
@@ -857,12 +897,11 @@ class ProviderOpenAIOfficial(Provider):
         """Parse OpenAI ChatCompletion into LLMResponse"""
         llm_response = LLMResponse("assistant")
 
-        choices = self._coerce_choices(completion, field_name="completion.choices")
-        if len(choices) == 0:
+        if not completion.choices:
             raise EmptyModelOutputError(
                 f"OpenAI completion has no choices. response_id={completion.id}"
             )
-        choice = choices[0]
+        choice = completion.choices[0]
 
         # parse the text completion
         if choice.message.content is not None:
@@ -932,10 +971,6 @@ class ProviderOpenAIOfficial(Provider):
             llm_response.tools_call_name = func_name_ls
             llm_response.tools_call_ids = tool_call_ids
             llm_response.tools_call_extra_content = tool_call_extra_content_dict
-            # If tool calls are present, drop assistant text to avoid premature replies.
-            if llm_response.result_chain or llm_response.completion_text:
-                llm_response.result_chain = None
-                llm_response.completion_text = ""
         # specially handle finish reason
         if choice.finish_reason == "content_filter":
             raise Exception(
@@ -961,51 +996,6 @@ class ProviderOpenAIOfficial(Provider):
             llm_response.usage = self._extract_usage(completion.usage)
 
         return llm_response
-
-    def _summarize_completion(self, completion: object) -> str:
-        summary = repr(completion)
-        if len(summary) > 600:
-            summary = summary[:600] + "...(truncated)"
-        return summary
-
-    def _coerce_choices(
-        self,
-        completion: object,
-        *,
-        field_name: str,
-        allow_missing: bool = False,
-    ) -> list:
-        choices = getattr(completion, "choices", None)
-        if choices is None:
-            if allow_missing:
-                logger.warning(
-                    "OpenAI-compatible payload missing %s; id=%s summary=%s",
-                    field_name,
-                    getattr(completion, "id", None),
-                    self._summarize_completion(completion),
-                )
-                return []
-            raise EmptyOrMalformedCompletionError(
-                f"OpenAI-compatible payload missing {field_name}; "
-                f"id={getattr(completion, 'id', None)} summary={self._summarize_completion(completion)}"
-            )
-        if isinstance(choices, list):
-            return choices
-        try:
-            return list(choices)
-        except TypeError as exc:
-            raise EmptyOrMalformedCompletionError(
-                f"OpenAI-compatible payload has invalid {field_name} type={type(choices).__name__}; "
-                f"id={getattr(completion, 'id', None)} summary={self._summarize_completion(completion)}"
-            ) from exc
-
-    def _is_retryable_provider_error(self, e: Exception) -> bool:
-        if isinstance(
-            e, (EmptyOrMalformedCompletionError, httpx.TimeoutException, TimeoutError)
-        ):
-            return True
-        msg = str(e).lower()
-        return "timeout" in msg or "timed out" in msg
 
     async def _prepare_chat_payload(
         self,
@@ -1054,11 +1044,6 @@ class ProviderOpenAIOfficial(Provider):
         model = model or self.get_model()
 
         payloads = {"messages": context_query, "model": model}
-        for key, value in kwargs.items():
-            if key in _RUNTIME_ONLY_CHAT_KWARGS:
-                continue
-            if value is not None and key not in payloads:
-                payloads[key] = value
 
         self._finally_convert_payload(payloads)
 
@@ -1073,6 +1058,16 @@ class ProviderOpenAIOfficial(Provider):
             model in deepseek_reasoning_models
             or "api.deepseek.com" in self.client.base_url.host
         )
+        # MiMo 推理模型（MiMo-V2.5-Pro / MiMo-V2.5 / MiMo-V2-Pro / MiMo-V2-Omni / MiMo-V2-Flash）
+        # 要求 assistant 历史消息必须回传 reasoning_content，否则返回 400
+        mimo_reasoning_models = {
+            "mimo-v2.5-pro",
+            "mimo-v2.5",
+            "mimo-v2-pro",
+            "mimo-v2-omni",
+            "mimo-v2-flash",
+        }
+        is_mimo_reasoning = model in mimo_reasoning_models
         for message in payloads.get("messages", []):
             if message.get("role") == "assistant" and isinstance(
                 message.get("content"), list
@@ -1099,6 +1094,15 @@ class ProviderOpenAIOfficial(Provider):
             ):
                 # DeepSeek v4 reasoning models require the field on assistant
                 # history messages, even when the reasoning content is empty.
+                message["reasoning_content"] = ""
+
+            if (
+                message.get("role") == "assistant"
+                and is_mimo_reasoning
+                and "reasoning_content" not in message
+            ):
+                # MiMo 推理模型要求 assistant 历史消息回传 reasoning_content，
+                # 缺失时 API 返回 400。参见 MiMo 官方文档。
                 message["reasoning_content"] = ""
 
             # Gemini 的 function_response 要求 google.protobuf.Struct（即 JSON 对象），
@@ -1162,11 +1166,7 @@ class ProviderOpenAIOfficial(Provider):
                 func_tool,
                 image_fallback_used,
             )
-        if (
-            "The model is not a VLM" in str(e)  # siliconcloud
-            or "unknown variant `image_url`" in str(e)
-            or "expected `text`" in str(e)
-        ):
+        if "The model is not a VLM" in str(e):  # siliconcloud
             if image_fallback_used or not self._context_contains_image(context_query):
                 raise e
             # 尝试删除所有 image
@@ -1210,8 +1210,8 @@ class ProviderOpenAIOfficial(Provider):
             or ("function" in str(e).lower() and "support" in str(e).lower())
         ):
             # openai, ollama, gemini openai, siliconcloud 的错误提示与 code 不统一，只能通过字符串匹配
-            logger.info(
-                f"{self.get_model()} 不支持函数工具调用，已自动去除，不影响使用。",
+            logger.warning(
+                f"{self.get_model()} 不支持函数工具调用，已自动去除，不影响使用。如需永久关闭，可前往 WebUI 中关闭工具调用。",
             )
             payloads.pop("tools", None)
             return (
@@ -1223,38 +1223,7 @@ class ProviderOpenAIOfficial(Provider):
                 None,
                 image_fallback_used,
             )
-        if self._is_retryable_provider_error(e):
-            retry_limit = min(max_retries, _RETRYABLE_PROVIDER_ERROR_MAX_RETRIES)
-            if retry_cnt < retry_limit - 1:
-                backoff = _RETRYABLE_PROVIDER_ERROR_BACKOFF_SEC[
-                    min(retry_cnt, len(_RETRYABLE_PROVIDER_ERROR_BACKOFF_SEC) - 1)
-                ]
-                logger.warning(
-                    "OpenAI-compatible provider transient error; retrying %s/%s in %.1fs: %s",
-                    retry_cnt + 1,
-                    retry_limit,
-                    backoff,
-                    e,
-                )
-                await asyncio.sleep(backoff)
-                return (
-                    False,
-                    chosen_key,
-                    available_api_keys,
-                    payloads,
-                    context_query,
-                    func_tool,
-                    image_fallback_used,
-                )
-            logger.error(
-                "OpenAI-compatible provider transient error exhausted retries: %s",
-                e,
-            )
-            raise e
         # logger.error(f"发生了错误。Provider 配置如下: {self.provider_config}")
-
-        if "tool" in str(e).lower() and "support" in str(e).lower():
-            logger.error("疑似该模型不支持函数调用工具调用。请输入 /tool off_all")
 
         if is_connection_error(e):
             proxy = self.provider_config.get("proxy", "")

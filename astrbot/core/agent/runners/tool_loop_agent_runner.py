@@ -1,7 +1,5 @@
 import asyncio
 import copy
-import json
-import re
 import sys
 import time
 import traceback
@@ -10,7 +8,6 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
-from difflib import SequenceMatcher
 from pathlib import Path
 
 from mcp.types import (
@@ -71,32 +68,6 @@ if sys.version_info >= (3, 12):
     from typing import override
 else:
     from typing_extensions import override
-
-
-def _normalize_stream_text_for_compare(text: str) -> str:
-    compact = re.sub(r"\s+", "", text.strip())
-    return re.sub(r"[。！!？?,，、…~～·`'\"“”‘’]", "", compact)
-
-
-def _looks_like_duplicate_streamed_final(
-    streamed_text: str, final_plain_text: str
-) -> bool:
-    normalized_streamed = _normalize_stream_text_for_compare(streamed_text)
-    normalized_final = _normalize_stream_text_for_compare(final_plain_text)
-
-    if not normalized_streamed or not normalized_final:
-        return False
-    if normalized_streamed == normalized_final:
-        return True
-
-    shorter, longer = sorted(
-        (normalized_streamed, normalized_final),
-        key=len,
-    )
-    if shorter in longer and len(shorter) / len(longer) >= 0.85:
-        return True
-
-    return SequenceMatcher(None, normalized_streamed, normalized_final).ratio() >= 0.92
 
 
 @dataclass(slots=True)
@@ -245,7 +216,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         enforce_max_turns: int = -1,
         # llm compressor
         llm_compress_instruction: str | None = None,
-        llm_compress_keep_recent: int = 0,
+        llm_compress_keep_recent_ratio: float = 0.15,
         llm_compress_provider: Provider | None = None,
         # truncate by turns compressor
         truncate_turns: int = 1,
@@ -256,38 +227,35 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         fallback_providers: list[Provider] | None = None,
         tool_result_overflow_dir: str | None = None,
         read_tool: FunctionTool | None = None,
-        tool_result_max_chars: int = 0,
         **kwargs: T.Any,
     ) -> None:
         self.req = request
         self.streaming = streaming
         self.enforce_max_turns = enforce_max_turns
         self.llm_compress_instruction = llm_compress_instruction
-        self.llm_compress_keep_recent = llm_compress_keep_recent
+        self.llm_compress_keep_recent_ratio = llm_compress_keep_recent_ratio
         self.llm_compress_provider = llm_compress_provider
         self.truncate_turns = truncate_turns
         self.custom_token_counter = custom_token_counter
         self.custom_compressor = custom_compressor
         self.tool_result_overflow_dir = tool_result_overflow_dir
         self.read_tool = read_tool
-        self.tool_result_max_chars = max(0, int(tool_result_max_chars or 0))
         self._tool_result_token_counter = EstimateTokenCounter()
-        # we will do compress when:
-        # 1. before requesting LLM
-        # TODO: 2. after LLM output a tool call
-        self.context_config = ContextConfig(
-            # <=0 will never do compress
+        self.request_context_manager_config = ContextConfig(
+            # <=0 disables token-based guarding.
             max_context_tokens=provider.provider_config.get("max_context_tokens", 0),
-            # enforce max turns before compression
+            # Enforce max turns before token-based guarding.
             enforce_max_turns=self.enforce_max_turns,
             truncate_turns=self.truncate_turns,
             llm_compress_instruction=self.llm_compress_instruction,
-            llm_compress_keep_recent=self.llm_compress_keep_recent,
+            llm_compress_keep_recent_ratio=self.llm_compress_keep_recent_ratio,
             llm_compress_provider=self.llm_compress_provider,
             custom_token_counter=self.custom_token_counter,
             custom_compressor=self.custom_compressor,
         )
-        self.context_manager = ContextManager(self.context_config)
+        self.request_context_manager = ContextManager(
+            self.request_context_manager_config
+        )
 
         self.provider = provider
         self.fallback_providers: list[Provider] = []
@@ -312,11 +280,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self._follow_up_seq = 0
         self._last_tool_name: str | None = None
         self._same_tool_streak = 0
-        self._force_followup_after_alias = False
-        self._forced_alias_followup_text: str | None = None
-        self._forced_tool_subset_names: list[str] | None = None
-        self._skill_read_followup_budget = 1
-        self._resolved_alias_queue: list[str] = []
 
         # These two are used for tool schema mode handling
         # We now have two modes:
@@ -368,7 +331,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         request: ProviderRequest,
     ) -> dict[str, T.Any]:
         modalities = self.provider.provider_config.get("modalities", None)
-        if not isinstance(modalities, list):
+        if not modalities:  # Unconfigured (None or empty list) defaults to support all modalities for backward compatibility
             return await request.assemble_context()
 
         supports_image = "image" in modalities
@@ -491,45 +454,10 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
             preview = preview[:next_len]
         return preview
 
-    def _limit_inline_tool_result_chars(
-        self,
-        content: str,
-        max_chars: int | None = None,
-    ) -> str:
-        if max_chars is None:
-            max_chars = getattr(self, "tool_result_max_chars", 0)
-        if max_chars <= 0 or len(content) <= max_chars:
-            return content
-
-        suffix = f"\n[truncated: tool result exceeded {max_chars} chars]"
-        keep = max(0, max_chars - len(suffix))
-        return f"{content[:keep].rstrip()}{suffix}"[:max_chars]
-
-    def _remaining_tool_result_chars(
-        self,
-        tool_call_result_blocks: list[ToolCallMessageSegment],
-    ) -> int | None:
-        max_chars = getattr(self, "tool_result_max_chars", 0)
-        if max_chars <= 0:
-            return None
-        used_chars = sum(
-            len(str(block.content or "")) for block in tool_call_result_blocks
-        )
-        return max(0, max_chars - used_chars)
-
     async def _iter_llm_responses(
         self, *, include_model: bool = True
     ) -> T.AsyncGenerator[LLMResponse, None]:
         """Yields chunks *and* a final LLMResponse."""
-        if self.run_context.messages:
-            self.run_context.messages = [
-                m
-                for m in self.run_context.messages
-                if not (
-                    getattr(m, "role", None) == "assistant"
-                    and getattr(m, "tool_calls", None) == []
-                )
-            ]
         payload = {
             "contexts": self._sanitize_contexts_for_provider(self.run_context.messages),
             "func_tool": self._func_tool_for_provider(),
@@ -652,7 +580,10 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self,
         contexts: list[Message] | list[dict[str, T.Any]],
     ) -> list[Message] | list[dict[str, T.Any]]:
-        if not self._should_fix_modalities_for_provider():
+        modalities = self.provider.provider_config.get("modalities", None)
+        if (
+            not modalities
+        ):  # Unconfigured (None or empty list) defaults to support all modalities
             return contexts
         sanitized_contexts, stats = sanitize_contexts_by_modalities(
             contexts,
@@ -661,15 +592,11 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         log_context_sanitize_stats(stats)
         return sanitized_contexts
 
-    def _should_fix_modalities_for_provider(self) -> bool:
-        modalities = self.provider.provider_config.get("modalities", None)
-        return isinstance(modalities, list)
-
     def _func_tool_for_provider(self) -> ToolSet | None:
         if not self.req.func_tool:
             return None
         modalities = self.provider.provider_config.get("modalities", None)
-        if isinstance(modalities, list) and "tool_use" not in modalities:
+        if isinstance(modalities, list) and modalities and "tool_use" not in modalities:
             logger.debug(
                 "Provider %s does not support tool_use, clearing tools for request.",
                 self.provider,
@@ -677,11 +604,14 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
             return None
         return self.req.func_tool
 
-    def _simple_print_message_role(self, tag: str = ""):
-        roles = []
-        for message in self.run_context.messages:
-            roles.append(message.role)
-        logger.debug(f"{tag} RunCtx.messages -> [{len(roles)}] {','.join(roles)}")
+    def _simple_print_message_role(self, tag: str, messages: list):
+        roles = [m.role for m in messages]
+        n = len(roles)
+        if n > 10:
+            summary = ",".join(roles[:4]) + ",...," + ",".join(roles[-4:])
+        else:
+            summary = ",".join(roles)
+        logger.debug(f"{tag} messages -> [{n}] {summary}")
 
     def follow_up(
         self,
@@ -775,80 +705,57 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self._transition_state(AgentState.RUNNING)
         llm_resp_result = None
 
-        # do truncate and compress
+        # Process request-time context before sending it to the provider.
         token_usage = self.req.conversation.token_usage if self.req.conversation else 0
-        self._simple_print_message_role("[BefCompact]")
-        self.run_context.messages = await self.context_manager.process(
+        self._simple_print_message_role("[BefCompact]", self.run_context.messages)
+        self.run_context.messages = await self.request_context_manager.process(
             self.run_context.messages, trusted_token_usage=token_usage
         )
-        self._simple_print_message_role("[AftCompact]")
+        self._simple_print_message_role("[AftCompact]", self.run_context.messages)
 
-        restore_tool_set = None
-        if self._forced_tool_subset_names and self.req.func_tool:
-            restore_tool_set = self.req.func_tool
-            self.req.func_tool = self._build_tool_subset(
-                restore_tool_set, self._forced_tool_subset_names
-            )
-        streamed_text = ""
-        streamed_text_emitted = False
-        try:
-            async for llm_response in self._iter_llm_responses_with_fallback():
-                if llm_response.is_chunk:
-                    if self.stats.time_to_first_token == 0:
-                        self.stats.time_to_first_token = (
-                            time.time() - self.stats.start_time
-                        )
+        async for llm_response in self._iter_llm_responses_with_fallback():
+            if llm_response.is_chunk:
+                if self.stats.time_to_first_token == 0:
+                    self.stats.time_to_first_token = time.time() - self.stats.start_time
 
-                    if llm_response.reasoning_content:
-                        yield AgentResponse(
-                            type="streaming_delta",
-                            data=AgentResponseData(
-                                chain=MessageChain(type="reasoning").message(
-                                    llm_response.reasoning_content,
-                                ),
+                if llm_response.reasoning_content:
+                    yield AgentResponse(
+                        type="streaming_delta",
+                        data=AgentResponseData(
+                            chain=MessageChain(type="reasoning").message(
+                                llm_response.reasoning_content,
                             ),
-                        )
-                    if llm_response.result_chain:
-                        chunk_text = llm_response.result_chain.get_plain_text()
-                        if chunk_text:
-                            streamed_text += chunk_text
-                            streamed_text_emitted = True
-                        yield AgentResponse(
-                            type="streaming_delta",
-                            data=AgentResponseData(chain=llm_response.result_chain),
-                        )
-                    elif llm_response.completion_text:
-                        streamed_text += llm_response.completion_text
-                        streamed_text_emitted = True
-                        yield AgentResponse(
-                            type="streaming_delta",
-                            data=AgentResponseData(
-                                chain=MessageChain().message(
-                                    llm_response.completion_text
-                                ),
-                            ),
-                        )
-                    if self._is_stop_requested():
-                        llm_resp_result = LLMResponse(
-                            role="assistant",
-                            completion_text=self.USER_INTERRUPTION_MESSAGE,
-                            reasoning_content=llm_response.reasoning_content,
-                            reasoning_signature=llm_response.reasoning_signature,
-                        )
-                        break
-                    continue
-                llm_resp_result = llm_response
+                        ),
+                    )
+                if llm_response.result_chain:
+                    yield AgentResponse(
+                        type="streaming_delta",
+                        data=AgentResponseData(chain=llm_response.result_chain),
+                    )
+                elif llm_response.completion_text:
+                    yield AgentResponse(
+                        type="streaming_delta",
+                        data=AgentResponseData(
+                            chain=MessageChain().message(llm_response.completion_text),
+                        ),
+                    )
+                if self._is_stop_requested():
+                    llm_resp_result = LLMResponse(
+                        role="assistant",
+                        completion_text=self.USER_INTERRUPTION_MESSAGE,
+                        reasoning_content=llm_response.reasoning_content,
+                        reasoning_signature=llm_response.reasoning_signature,
+                    )
+                    break
+                continue
+            llm_resp_result = llm_response
 
-                if not llm_response.is_chunk and llm_response.usage:
-                    # only count the token usage of the final response for computation purpose
-                    self.stats.token_usage += llm_response.usage
-                    if self.req.conversation:
-                        self.req.conversation.token_usage = llm_response.usage.total
-                break  # got final response
-        finally:
-            if restore_tool_set is not None:
-                self.req.func_tool = restore_tool_set
-            self._forced_tool_subset_names = None
+            if not llm_response.is_chunk and llm_response.usage:
+                # only count the token usage of the final response for computation purpose
+                self.stats.token_usage += llm_response.usage
+                if self.req.conversation:
+                    self.req.conversation.token_usage = llm_response.usage.total
+            break  # got final response
 
         if not llm_resp_result:
             if self._is_stop_requested():
@@ -882,29 +789,9 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
             return
 
         if not llm_resp.tools_call_name:
-            if self._force_followup_after_alias and self._forced_alias_followup_text:
-                self.run_context.messages.append(
-                    Message(
-                        role="assistant",
-                        content=[TextPart(text=llm_resp.completion_text or "")],
-                    )
-                )
-                self.run_context.messages.append(
-                    Message(role="user", content=self._forced_alias_followup_text)
-                )
-                self._force_followup_after_alias = False
-                self._forced_alias_followup_text = None
-                return
             await self._complete_with_assistant_response(llm_resp)
 
         # 返回 LLM 结果
-        final_plain_text = (llm_resp.completion_text or "").strip()
-        suppress_duplicate_final_result = (
-            streamed_text_emitted
-            and final_plain_text
-            and _looks_like_duplicate_streamed_final(streamed_text, final_plain_text)
-            and not llm_resp.tools_call_name
-        )
         if llm_resp.reasoning_content:
             yield AgentResponse(
                 type="llm_result",
@@ -914,12 +801,12 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     ),
                 ),
             )
-        if llm_resp.result_chain and not suppress_duplicate_final_result:
+        if llm_resp.result_chain:
             yield AgentResponse(
                 type="llm_result",
                 data=AgentResponseData(chain=llm_resp.result_chain),
             )
-        elif llm_resp.completion_text and not suppress_duplicate_final_result:
+        elif llm_resp.completion_text:
             yield AgentResponse(
                 type="llm_result",
                 data=AgentResponseData(
@@ -930,8 +817,9 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         # 如果有工具调用，还需处理工具调用
         if llm_resp.tools_call_name:
             if self.tool_schema_mode == "skills_like":
-                llm_resp, _ = await self._resolve_tool_exec(llm_resp)
-                if not llm_resp.tools_call_name:
+                requery_resp, _ = await self._resolve_tool_exec(llm_resp)
+                if not requery_resp.tools_call_name:
+                    llm_resp = requery_resp
                     logger.warning(
                         "skills_like tool re-query returned no tool calls; fallback to assistant response."
                     )
@@ -959,6 +847,10 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
 
                     await self._complete_with_assistant_response(llm_resp)
                     return
+                else:
+                    llm_resp.tools_call_name = requery_resp.tools_call_name
+                    llm_resp.tools_call_args = requery_resp.tools_call_args
+                    llm_resp.tools_call_ids = requery_resp.tools_call_ids
 
             tool_call_result_blocks = []
             cached_images = []  # Collect cached images for LLM visibility
@@ -1017,7 +909,9 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
             # append a user message with images so LLM can see them
             if cached_images:
                 modalities = self.provider.provider_config.get("modalities", [])
-                supports_image = "image" in modalities
+                supports_image = (
+                    not modalities or "image" in modalities
+                )  # Empty list is treated as unconfigured for backward compatibility
                 if supports_image:
                     # Build user message with images for LLM to review
                     image_parts = []
@@ -1089,21 +983,11 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         logger.info(f"Agent 使用工具: {llm_response.tools_call_name}")
 
         def _append_tool_call_result(tool_call_id: str, content: str) -> None:
-            remaining_chars = self._remaining_tool_result_chars(tool_call_result_blocks)
-            if remaining_chars is None:
-                limited_content = content
-            elif remaining_chars <= 0:
-                limited_content = "[truncated: tool result context budget exhausted]"
-            else:
-                limited_content = self._limit_inline_tool_result_chars(
-                    content,
-                    remaining_chars,
-                )
             tool_call_result_blocks.append(
                 ToolCallMessageSegment(
                     role="tool",
                     tool_call_id=tool_call_id,
-                    content=self._merge_follow_up_notice(limited_content),
+                    content=self._merge_follow_up_notice(content),
                 ),
             )
 
@@ -1186,18 +1070,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 else:
                     # 如果没有 handler（如 MCP 工具），使用所有参数
                     valid_params = func_tool_args
-
-                if (
-                    func_tool_name == "get_impression_profile"
-                    and self._resolved_alias_queue
-                ):
-                    forced_target = self._resolved_alias_queue.pop(0)
-                    valid_params = dict(valid_params)
-                    valid_params["target"] = forced_target
-                    logger.info(
-                        "get_impression_profile forced target from resolve_alias: %s",
-                        forced_target,
-                    )
 
                 try:
                     await self.agent_hooks.on_tool_start(
@@ -1330,46 +1202,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     )
                 except Exception as e:
                     logger.error(f"Error in on_tool_end hook: {e}", exc_info=True)
-                if (
-                    self._skill_read_followup_budget > 0
-                    and func_tool_name == "astrbot_execute_shell"
-                ):
-                    command = str(func_tool_args.get("command", ""))
-                    is_skill_read = "SKILL.md" in command and any(
-                        op in command
-                        for op in ("cat ", "head ", "sed ", "tail ", "awk ")
-                    )
-                    if is_skill_read:
-                        exit_code = None
-                        if _final_resp and _final_resp.content:
-                            first = _final_resp.content[0]
-                            if isinstance(first, TextContent):
-                                try:
-                                    parsed = json.loads(first.text)
-                                    exit_code = parsed.get("exit_code")
-                                except Exception:  # noqa: BLE001
-                                    exit_code = None
-                        if exit_code == 0:
-                            original_request = (self.req.prompt or "").strip()
-                            request_line = (
-                                f"Original user request: {original_request}\n"
-                                if original_request
-                                else ""
-                            )
-                            self._forced_alias_followup_text = (
-                                f"{request_line}"
-                                "You have read the skill document successfully. "
-                                "Now continue the task by executing the skill steps with tools, "
-                                "then return the final user-facing result. "
-                                "Do not summarize or explain the skill document."
-                            )
-                            self._force_followup_after_alias = True
-                            self._forced_tool_subset_names = [
-                                "astrbot_execute_shell",
-                                "astrbot_execute_python",
-                                "astrbot_execute_ipython",
-                            ]
-                            self._skill_read_followup_budget -= 1
             except Exception as e:
                 if isinstance(e, _ToolExecutionInterrupted):
                     raise
@@ -1399,44 +1231,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     )
                 )
                 logger.info(f"Tool `{func_tool_name}` Result: {tool_result_content}")
-                if func_tool_name == "resolve_alias":
-                    try:
-                        data = json.loads(tool_result_content)
-                    except Exception:  # noqa: BLE001
-                        data = None
-                    if isinstance(data, dict) and data.get("status") == "ok":
-                        resolved = data.get("message") or data.get("candidates") or ""
-                        resolved = str(resolved).strip()
-                        if "," in resolved:
-                            resolved = resolved.split(",", 1)[0].strip()
-                        if resolved:
-                            self._resolved_alias_queue.append(resolved)
-                        hint = (
-                            "resolve_alias 已成功返回。现在必须继续用这个结果回答用户问题，"
-                            "不要回到闲聊。如需资料请继续调用可用的档案工具（如 get_user_profile / get_impression_profile）。"
-                        )
-                        if resolved:
-                            hint = (
-                                f"resolve_alias 已成功返回（user_id={resolved}）。"
-                                "现在必须继续用这个结果回答用户问题，"
-                                "不要回到闲聊。如需资料请继续调用可用的档案工具（如 get_user_profile / get_impression_profile）。"
-                            )
-                        self._forced_alias_followup_text = hint
-                        self._force_followup_after_alias = True
-
-                        profile_followup_candidates = [
-                            "get_user_profile",
-                            "get_impression_profile",
-                            "get_avatar_profile",
-                            "get_alias_sources",
-                            "get_evidence_rows",
-                        ]
-                        forced_subset: list[str] = []
-                        if req.func_tool:
-                            for candidate in profile_followup_candidates:
-                                if req.func_tool.get_tool(candidate):
-                                    forced_subset.append(candidate)
-                        self._forced_tool_subset_names = forced_subset or None
 
         # 处理函数调用响应
         if tool_call_result_blocks:
@@ -1612,6 +1406,9 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self,
         executor: AsyncIterator[ToolExecutorResultT],
     ) -> T.AsyncGenerator[ToolExecutorResultT, None]:
+        async def _next_executor_result() -> ToolExecutorResultT:
+            return await anext(executor)
+
         while True:
             if self._is_stop_requested():
                 await self._close_executor(executor)
@@ -1619,7 +1416,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     "Tool execution interrupted before reading the next tool result."
                 )
 
-            next_result_task = asyncio.create_task(anext(executor))
+            next_result_task = asyncio.create_task(_next_executor_result())
             abort_task = asyncio.create_task(self._abort_signal.wait())
             try:
                 done, _ = await asyncio.wait(

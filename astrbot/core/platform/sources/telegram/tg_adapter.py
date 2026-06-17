@@ -215,20 +215,10 @@ class TelegramPlatformAdapter(Platform):
         message_chain: MessageChain,
     ) -> None:
         from_username = session.session_id
-        sent_messages = await TelegramPlatformEvent.send_with_client(
+        await TelegramPlatformEvent.send_with_client(
             self.client,
             message_chain,
             from_username,
-        )
-        setattr(message_chain, "_telegram_sent_messages", sent_messages)
-        setattr(
-            message_chain,
-            "_telegram_sent_message_ids",
-            [
-                str(getattr(message, "message_id", "") or "").strip()
-                for message in sent_messages
-                if str(getattr(message, "message_id", "") or "").strip()
-            ],
         )
         await super().send_by_session(session, message_chain)
 
