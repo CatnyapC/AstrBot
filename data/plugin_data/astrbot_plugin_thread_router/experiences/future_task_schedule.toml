@@ -1,0 +1,42 @@
+[group]
+id = "future_task_schedule"
+enabled = true
+
+[[lexical]]
+cue = "future_task_schedule"
+enabled = true
+patterns = []
+regex = [
+  "^(狐米|foxmi|@狐米|@foxmi).*(\\d+|[一二三四五六七八九十两半]+)(秒|分钟|分|小时|钟头|天|日)后.*(提醒|叫|喊|找|发)",
+  "^(狐米|foxmi|@狐米|@foxmi).*(每天|每周|每月|每半小时|每小时|每分钟).*(提醒|叫|喊|找|发)",
+]
+adds_tags = [
+  "intent:future_task_schedule",
+  "capability:future_task_schedule",
+  "policy:schedule",
+]
+
+[[capsule]]
+id = "managed:future_task_schedule"
+enabled = true
+summary = "Schedule a delayed or recurring future task only when the current message explicitly asks for timed delivery"
+cue = "future_task_schedule"
+route_hint = "future_task_schedule"
+tool_hints = [
+  "future_task_schedule",
+]
+tool_steps = [
+  { tool_name = "future_task_schedule", args = {} },
+]
+task_class = "future_task_schedule"
+policy_action = "deterministic"
+confidence = 0.92
+context_tags = [
+  "intent:future_task_schedule",
+  "capability:future_task_schedule",
+  "policy:schedule",
+]
+required_tags = [
+  "capability:future_task_schedule",
+]
+negative_tags = []

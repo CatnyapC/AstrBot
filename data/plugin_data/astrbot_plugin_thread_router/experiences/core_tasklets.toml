@@ -1,0 +1,464 @@
+[group]
+id = "core_tasklets"
+enabled = true
+
+[[lexical]]
+cue = "identity_memory_lookup"
+enabled = true
+patterns = []
+regex = [
+  "(?:^|[\\s，,。？?！!])谁是[^\\s，,。？?！!]{1,40}",
+  "(?:^|[\\s，,。？?！!])[^\\s，,。？?！!]{1,40}是谁",
+  "(?:^|[\\s，,。？?！!])[^\\s，,。？?！!]{1,40}是什么人",
+]
+adds_tags = [
+  "topic:identity_query",
+  "capability:local_memory_lookup",
+]
+
+[[capsule]]
+id = "seed:profile_impression_enumerated_lookup"
+enabled = true
+summary = "Enumerated profile impression request; resolve target and fetch enough profile clues"
+cue = "profile_impression_enumerate"
+route_hint = "profile_impression_lookup"
+tool_hints = [
+  "resolve_alias",
+  "get_user_profile",
+]
+tool_steps = [
+  { tool_name = "resolve_alias", args = { target_surface = "$target" } },
+  { tool_name = "get_user_profile", args = { target_id = "$resolve_alias.target_id", fields = ["species", "facts", "personality", "history"], requested_count = "$requested_count" } },
+]
+answer_contract = "answer_only"
+task_class = "profile_impression_query"
+policy_action = "main_reply"
+reply_length_policy = "relaxed"
+confidence = 0.88
+context_tags = [
+  "intent:profile_impression_query",
+  "intent:impression_query",
+  "capability:entity_profile_lookup",
+  "shape:enumerate",
+]
+negative_tags = []
+
+[[capsule]]
+id = "managed:identity_memory_archive_external_lookup"
+enabled = true
+summary = "Identity lookup from graph memory, then local archive, then external reference"
+cue = "identity_memory_lookup"
+route_hint = "identity_memory_lookup"
+tool_hints = [
+  "router_memory_query",
+  "router_timeline_context",
+  "bailian_external_knowledge",
+]
+tool_steps = [
+  { tool_name = "router_memory_query", args = { query_text = "$current_prompt", target_hint = "$target", memory_intent = "fact_lookup", kinds = ["fact_claim", "knowledge_claim", "social_impression"], top_k = 6 } },
+]
+fallback_when = [
+  "not_found",
+  "timeout",
+  "failed",
+  "unavailable",
+  "blocked",
+  "source_count_zero",
+]
+fallback_steps = [
+  { tool = "router_timeline_context", when = ["not_found", "timeout", "failed", "unavailable", "blocked", "source_count_zero"], args = { query = "$current_prompt", keywords = ["$current_prompt"], mode = "keyword_search", before_archive_id = "$current_archive_key", lookback_days = 365, limit = 8 } },
+  { tool = "bailian_external_knowledge", when = ["not_found", "no_answer", "timeout", "failed", "unavailable", "blocked", "source_count_zero"], args = { query = "$current_prompt" } },
+]
+answer_contract = "answer_only"
+task_class = "identity_lookup"
+policy_action = "main_reply"
+confidence = 0.81
+context_tags = [
+  "topic:identity_query",
+  "intent:information_seeking",
+  "capability:local_memory_lookup",
+]
+negative_tags = [
+  "intent:entity_recall",
+  "intent:profile_impression_query",
+  "evidence:archive_quote",
+  "media:image",
+]
+
+[[capsule]]
+id = "seed:entity_recall_profile_archive_kr"
+enabled = true
+summary = "Entity/person recall with profile first, archive history second, KR/web last"
+cue = "entity_recall"
+route_hint = "entity_recall"
+tool_hints = [
+  "entity_profile_context",
+  "router_timeline_context",
+  "knowledge_reference",
+]
+tool_steps = [
+  { tool_name = "resolve_alias", args = { target_surface = "$target" } },
+  { tool_name = "get_user_profile", args = { target_id = "$resolve_alias.target_id", fields = ["aliases", "impression", "species", "personality", "history"] } },
+]
+fallback_when = [
+  "insufficient",
+  "not_found",
+  "skipped",
+  "failed",
+  "no_answer",
+  "unavailable",
+]
+fallback_steps = [
+  { tool = "router_timeline_context", when = ["insufficient", "not_found", "skipped", "failed"], args = { query = "$target", keywords = ["$target"], mode = "keyword_search", before_archive_id = "$current_archive_key", lookback_days = 365, limit = 8 } },
+  { tool = "knowledge_reference", when = ["insufficient", "not_found", "skipped", "failed", "no_answer", "unavailable"], args = { subject = "$target", reason = "entity_recall_fallback" } },
+]
+fallback_order = [
+  "profile",
+  "archive_history",
+  "knowledge_reference",
+]
+answer_contract = "answer_only"
+task_class = "entity_recall"
+policy_action = "deterministic"
+confidence = 0.86
+negative_tags = []
+
+[[capsule]]
+id = "seed:contextual_followup_local_context"
+enabled = true
+summary = "Weak reply/context follow-up answered from replied bot/local context"
+cue = "contextual_followup"
+route_hint = "contextual_followup"
+tool_hints = [
+  "reply_context",
+  "router_timeline_context",
+]
+task_class = "contextual_followup"
+policy_action = "deterministic"
+confidence = 0.80
+negative_tags = []
+
+[[capsule]]
+id = "managed:visual_memory_find_media"
+enabled = true
+summary = "Find/search visual memory by image or description"
+cue = "media_query"
+route_hint = "visual_memory_send"
+tool_hints = [
+  "router_visual_memory_query_and_send",
+]
+tool_steps = [
+  { tool_name = "router_visual_memory_query_and_send", args = { query = "$current_prompt" } },
+]
+task_class = "visual_memory_send"
+policy_action = "fast_agentic"
+confidence = 0.80
+negative_tags = []
+
+[[capsule]]
+id = "managed:visual_media_grounding"
+enabled = true
+summary = "Inspect current or replied visual media directly"
+cue = "media_grounding"
+route_hint = "media_grounding"
+tool_hints = [
+  "router_visual_media_grounding_query",
+]
+tool_steps = [
+  { tool_name = "router_visual_media_grounding_query", args = { query = "$current_prompt", context_text = "$context_text", reply_archive_id = "$reply_archive_id", archive_id = "$current_archive_key", force_refresh = true } },
+]
+task_class = "media_grounding"
+policy_action = "system3"
+confidence = 0.90
+context_tags = [
+  "intent:image_question",
+  "media:image",
+  "capability:media_grounding",
+]
+negative_tags = []
+
+[[capsule]]
+id = "managed:visual_memory_send_alternate_media"
+enabled = true
+summary = "Send another existing visual memory media item; exclude recent successful sends"
+cue = "media_send_alternate"
+route_hint = "visual_memory_send"
+tool_hints = [
+  "router_visual_memory_query_and_send",
+]
+tool_steps = [
+  { tool_name = "router_visual_memory_query_and_send", args = { query = "$current_prompt", exclude_policy = "exclude_previous", query_constraints = ["alternate"] } },
+]
+task_class = "visual_memory_send"
+policy_action = "fast_agentic"
+confidence = 0.92
+negative_tags = []
+
+[[capsule]]
+id = "managed:visual_memory_send_media"
+enabled = true
+summary = "Send/forward existing visual memory media"
+cue = "media_send"
+route_hint = "visual_memory_send"
+tool_hints = [
+  "router_visual_memory_query_and_send",
+]
+tool_steps = [
+  { tool_name = "router_visual_memory_query_and_send", args = { query = "$current_prompt" } },
+]
+task_class = "visual_memory_send"
+policy_action = "fast_agentic"
+confidence = 0.85
+negative_tags = []
+
+[[capsule]]
+id = "managed:visual_memory_correction"
+enabled = true
+summary = "Correct VisualMemory tags or VisualMemory-to-Entity relation claims"
+cue = "visual_memory_correction"
+route_hint = "visual_memory_correction"
+tool_hints = [
+  "router_visual_media_grounding_query",
+  "router_visual_memory_correction",
+]
+tool_steps = [
+  { tool_name = "router_visual_media_grounding_query", args = { query = "$current_prompt", context_text = "$context_text", reply_archive_id = "$reply_archive_id", archive_id = "$current_archive_key", force_refresh = true } },
+  { tool_name = "router_visual_memory_correction", args = { query = "$current_prompt", archive_ref = "$current_archive_key", apply_mode = "guarded_apply" } },
+]
+task_class = "visual_memory_correction"
+policy_action = "deterministic"
+confidence = 0.88
+context_tags = [
+  "intent:visual_memory_correction",
+  "media:image",
+  "capability:visual_memory_correction",
+]
+negative_tags = [
+  "intent:public_how_to_lookup",
+  "evidence:external_web_needed",
+]
+
+[[lexical]]
+cue = "media_query"
+enabled = true
+patterns = [
+  "发过吗",
+  "找一下",
+  "有没有",
+  "没有",
+  "真的没有",
+]
+regex = []
+adds_tags = [
+  "intent:image_question",
+  "media:image",
+  "capability:visual_memory_query",
+]
+
+[[lexical]]
+cue = "media_grounding"
+enabled = true
+patterns = [
+  "再看看",
+  "重新看",
+  "重看",
+  "仔细看看",
+  "仔细看",
+  "看看图里",
+  "看图里",
+  "看清楚",
+  "描述一下这张图",
+  "描述这张图",
+  "这张图里",
+  "这图里",
+  "图里有什么",
+  "图片里有什么",
+  "照片里有什么",
+  "这张是什么",
+  "这张是谁",
+]
+regex = [
+  "(?:仔细|重新|再)?看.{0,8}(?:这张|这图|图里|图片里|照片里|图上)",
+  "描述.{0,8}(?:这张|这图|图片|照片|图里)",
+]
+adds_tags = [
+  "intent:image_question",
+  "media:image",
+  "capability:media_grounding",
+]
+
+[[lexical]]
+cue = "media_send"
+enabled = true
+patterns = [
+  "发一张",
+  "发张",
+  "发个",
+  "发一下",
+  "发这张",
+  "发出来",
+  "发出来看看",
+  "发图",
+  "发送",
+  "转发",
+  "传图",
+  "传一下",
+]
+regex = []
+adds_tags = [
+  "intent:image_question",
+  "media:image",
+  "capability:visual_memory_query",
+  "capability:visual_memory_send",
+]
+
+[[lexical]]
+cue = "media_send_alternate"
+enabled = true
+patterns = [
+  "再发一张",
+  "再发一个",
+  "再来一张",
+  "再来一个",
+  "换一张",
+  "换一个",
+  "另一张",
+  "另一个",
+]
+regex = [
+  "(?:别的|不同).{0,12}(?:图|图片|照片|表情|头像|图标)",
+  "(?:图|图片|照片|表情|头像|图标).{0,12}(?:别的|不同|另一张|另一个)",
+]
+adds_tags = [
+  "intent:image_question",
+  "media:image",
+  "capability:visual_memory_query",
+  "capability:visual_memory_send",
+  "intent:image_send_alternate",
+]
+
+[[lexical]]
+cue = "visual_memory_correction"
+enabled = true
+patterns = [
+  "不是这个图",
+  "不是这张图",
+  "不是cb的图",
+  "标签错",
+  "图标错",
+  "认错",
+  "错图",
+]
+regex = [
+  "是.+不是.+(?:图|图片|照片|图标|表情)",
+  "不是.+(?:的)?(?:图|图片|照片|图标|表情)",
+]
+adds_tags = [
+  "intent:visual_memory_correction",
+  "media:image",
+  "capability:visual_memory_correction",
+]
+
+[[capsule]]
+id = "seed:local_exact_archive_evidence_lookup"
+enabled = true
+summary = "Who said / local exact evidence from archive timeline"
+cue = "claim_query"
+route_hint = "local_exact"
+tool_hints = [
+  "router_timeline_context",
+]
+tool_steps = [
+  { tool_name = "router_timeline_context", args = { query = "$current_prompt", keywords = ["$current_prompt"], mode = "keyword_search", before_archive_id = "$current_archive_key", lookback_days = 365, limit = 8 } },
+]
+task_class = "archive_evidence_lookup"
+policy_action = "fast_agentic"
+confidence = 0.82
+negative_tags = []
+
+[[capsule]]
+id = "seed:social_claim_timeline_lookup"
+enabled = true
+summary = "Who said / who called / who claimed query"
+cue = "claim_query"
+route_hint = "timeline_evidence"
+tool_hints = [
+  "router_timeline_context",
+]
+tool_steps = [
+  { tool_name = "router_timeline_context", args = { query = "$current_prompt", keywords = ["$current_prompt"], mode = "keyword_search", before_archive_id = "$current_archive_key", lookback_days = 365, limit = 8 } },
+]
+task_class = "claim_lookup"
+policy_action = "fast_agentic"
+confidence = 0.78
+negative_tags = []
+
+[[capsule]]
+id = "seed:appearance_profile_lookup"
+enabled = true
+summary = "Appearance/avatar description request"
+cue = "appearance"
+route_hint = "profile_lookup"
+tool_hints = []
+task_class = "appearance_query"
+policy_action = "main_reply"
+confidence = 0.75
+negative_tags = []
+
+[[capsule]]
+id = "seed:identity_name_resolution"
+enabled = true
+summary = "Name/identity query for group members"
+cue = "name_query"
+route_hint = "identity_resolution"
+tool_hints = []
+task_class = "name_query"
+policy_action = "main_reply"
+confidence = 0.70
+negative_tags = []
+
+[[capsule]]
+id = "seed:group_memory_fact_lookup"
+enabled = true
+summary = "Local group memory / fact recall question"
+cue = "local_memory"
+route_hint = "memory_lookup"
+tool_hints = [
+  "router_memory_query",
+]
+tool_steps = [
+  { tool_name = "router_memory_query", args = { query_text = "$current_prompt", target_hint = "$target", memory_intent = "fact_lookup", top_k = 6 } },
+]
+task_class = "fact_lookup"
+policy_action = "main_reply"
+confidence = 0.65
+negative_tags = [
+  "intent:entity_recall",
+  "capability:entity_profile_lookup",
+  "intent:contextual_followup",
+  "evidence:archive_quote",
+]
+
+[[capsule]]
+id = "seed:parser_video_slice_command"
+enabled = true
+summary = "Parser video slice/clip request"
+cue = "parser_action"
+route_hint = "parser_slice"
+tool_hints = []
+task_class = "parser_video_slice_command"
+policy_action = "deterministic"
+confidence = 0.90
+negative_tags = []
+
+[[capsule]]
+id = "seed:approval_decision"
+enabled = true
+summary = "Approve/reject pending approval request"
+cue = "admin_action"
+route_hint = "approval_action"
+tool_hints = []
+task_class = "approval_decision"
+policy_action = "main_reply"
+confidence = 0.85
+negative_tags = []

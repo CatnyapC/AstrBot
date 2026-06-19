@@ -1,0 +1,68 @@
+[group]
+id = "bilibili_video_lookup"
+enabled = true
+
+[[lexical]]
+cue = "bilibili_video_lookup"
+enabled = true
+patterns = [
+  "Bilibili 视频",
+  "B站 视频",
+  "哔哩哔哩 视频",
+]
+regex = [
+  "(Bilibili|bilibili|B站|哔哩哔哩).{0,100}(视频链接|链接|BV|找找|搜索|查找)",
+  "(?=.*(?:Bilibili|bilibili|B站|哔哩哔哩))(?=.*搜)(?=.*视频)",
+  "(视频页面|视频播放页面).{0,120}(视频链接|链接|找找|搜索|查找)",
+  "(从夯到拉|从穷到拉).{0,80}(大学|室友|舍友|锐评).{0,120}(链接|找找|搜索|查找)",
+]
+adds_tags = [
+  "entity:bilibili",
+  "capability:bilibili_video_lookup",
+  "intent:find_video_link",
+]
+
+[[lexical]]
+cue = "bilibili_video_lookup"
+enabled = true
+requires_tags = ["intent:find_video_link"]
+patterns = [
+  "Bilibili",
+  "bilibili",
+  "B站",
+  "哔哩哔哩",
+]
+regex = [
+  "(视频页面|视频播放页面|视频缩略图|视频截图)",
+]
+adds_tags = [
+  "entity:bilibili",
+  "capability:bilibili_video_lookup",
+]
+
+[[capsule]]
+id = "managed:bilibili_video_lookup"
+enabled = true
+summary = "Find a Bilibili video link from screenshot OCR or title text"
+answer_contract = """
+Use the Bilibili lookup result as side-effect context.
+- If status=ok, the router_send_text_message step posts video_url directly; main reply must not repeat or prepend the link.
+- Do not say the browser is still searching after this tool succeeds.
+- If status=insufficient, do not invent a BV link.
+"""
+cue = "bilibili_video_lookup"
+route_hint = "bilibili_lookup"
+tool_hints = ["bilibili_video_lookup"]
+tool_steps = [
+  { tool_name = "bilibili_video_lookup", args = { query = "$current_prompt", context_text = "$context_text", limit = 5, timeout_sec = 8 } },
+  { tool_name = "router_send_text_message", args = { text = "$bilibili_video_lookup.result_summary.video_url", source_status = "$bilibili_video_lookup.status" } },
+]
+task_class = "bilibili_video_lookup"
+policy_action = "main_reply"
+confidence = 0.94
+context_tags = [
+  "entity:bilibili",
+  "capability:bilibili_video_lookup",
+  "intent:find_video_link",
+]
+negative_tags = []

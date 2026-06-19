@@ -1,0 +1,88 @@
+[group]
+id = "codex_app_browser_task"
+enabled = true
+
+[[lexical]]
+cue = "codex_browser_task"
+enabled = true
+patterns = []
+regex = [
+  "(做一下|做题|完成|测试|测验|跑一下|操作).*https?://",
+  "https?://.*(做一下|做题|完成|测试|测验|跑一下|操作|结果)",
+  "(发回来|结果页).*https?://",
+]
+adds_tags = [
+  "capability:codex_browser_task",
+  "intent:web_interaction_task",
+]
+
+[[lexical]]
+cue = "codex_browser_task"
+enabled = true
+patterns = [
+  "用浏览器",
+  "使用浏览器执行任务",
+  "用浏览器执行任务",
+  "用浏览器完成任务",
+  "浏览器执行任务",
+  "浏览器完成任务",
+  "浏览器打开",
+  "打开刚才",
+  "打开前面",
+]
+regex = [
+  "(使用|用)?浏览器(执行任务|完成任务|找找|搜索|查找|打开|访问|操作)",
+  "(浏览器.*任务|任务.*浏览器)",
+  "(打开|访问).*(刚才|前面|之前|wiki|网页|页面|那一页)",
+]
+adds_tags = [
+  "capability:codex_browser_task",
+  "capability:browser_execution",
+  "intent:web_interaction_task",
+  "intent:task_execution",
+]
+
+[[capsule]]
+id = "managed:codex_app_browser_task"
+enabled = true
+summary = "Use Codex App Server for browser operation tasks; return results and media only when needed"
+answer_contract = """
+For browser benchmark, quiz, or form-completion requests, run an interactive Browser/DOM workflow instead of a one-shot guessed script.
+- Treat the request as Codex/AI completing the public test itself; results represent the model/task worker, not the human user.
+- Prefer Browser observations and DOM inspection for every page state. If role/accessible clicks timeout, inspect the DOM and click the visible DOM node. Do not give up after a single click failure.
+- If the user asks to open a previously discussed page, wiki page, or source page, resolve the target page from the current routing context/tool context before running the browser task.
+- Do not rely on a cached question bank, hard-coded language route, hard-coded button text, or guessed question order. Read the current page question and options before answering each item.
+- For quiz flows, continue until the site shows a result/score/rating/review page. Do not stop on the start page, preparation page, or any numbered in-progress question page such as 1/20 or 18/20.
+- Only write status=ok after the final screenshot is of the result page and the page text contains result evidence such as score, rating, result, review, completion, 得分, 评级, 结果, 回顾, or 测试完成.
+- If the browser is still on an in-progress question page, write status=failed with a summary explaining the last observed question/page state; never mark it ok.
+- For any multi-target or checklist task, keep a generic completion_check with required_items, completed_items, and missing_items. This applies to named people/pages, URLs, files, questions, screenshots, translations, searches, and any user-listed work items.
+- Only write status=ok when missing_items is empty. If some requested items are still missing, write status=failed or needs_user and explain the partial result.
+- Save the final result page screenshot exactly to the requested screenshot_path. If the task fails, save the last observed page screenshot but keep status=failed or needs_user.
+- Report the browser result in text. Only send the saved media artifact back to chat when the current request explicitly asks for a screenshot, image, or media return.
+"""
+cue = "codex_browser_task"
+route_hint = "codex_app_server"
+tool_hints = [
+  "codex_app_server_probe",
+  "codex_browser_task",
+  "router_send_local_media",
+]
+tool_steps = [
+  { tool_name = "codex_app_server_probe", args = { timeout_sec = 10, port = 4510 } },
+  { tool_name = "codex_browser_task", args = { allow_submit = true, timeout_sec = 900, port = 4510 } },
+  { tool_name = "router_send_local_media", args = { path = "$codex_browser_task.screenshot_path", source_status = "$codex_browser_task.status", send_when = "explicit_media_return" } },
+]
+task_class = "codex_browser_task"
+policy_action = "fast_agentic"
+confidence = 0.90
+context_tags = [
+  "capability:codex_browser_task",
+  "intent:web_interaction_task",
+]
+required_tags = [
+  "capability:codex_browser_task",
+]
+negative_tags = [
+  "entity:bilibili",
+  "capability:bilibili_video_lookup",
+]

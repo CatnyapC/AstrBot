@@ -1,0 +1,58 @@
+[group]
+id = "parser_video_slice_command"
+enabled = true
+
+[[lexical]]
+cue = "parser_action"
+enabled = true
+patterns = [
+  "截取视频",
+  "截视频",
+  "截一下视频",
+  "切视频",
+  "切一段视频",
+  "剪视频",
+  "发视频里",
+  "视频里",
+]
+regex = [
+  "(截取|截|切|剪|裁).{0,12}(视频|片段|clip|mp4).{0,30}(秒|分钟|:)",
+  "(视频|片段|clip|mp4).{0,20}(从|前)?\\d+(?:分\\d*秒?|秒|:\\d{1,2})?(?:开始|起|后|到|至|-|~).{0,20}\\d+(?:分\\d*秒?|秒|:\\d{1,2})?",
+  "\\d+(?:分\\d*秒?|秒|:\\d{1,2})?(?:开始|起|后).{0,16}(\\d+)(?:分\\d*秒?|秒)"
+]
+adds_tags = [
+  "topic:video_trimming",
+  "capability:video_editing",
+  "capability:media_processing",
+  "intent:request_action",
+  "media:video",
+]
+
+[[capsule]]
+id = "managed:parser_video_slice_command"
+enabled = true
+summary = "Parser video slice/clip command request"
+answer_contract = """
+Validate and send a parser video slice command only for explicit bounded video clip requests.
+- Use existing router validation and policy checks.
+- Do not expose raw parser commands, local paths, cache keys, filenames, or command templates to the main LLM.
+- If status=ok, only confirm the parser command was sent; do not claim the downstream clip is complete.
+- If status=source_ref_required or source_hint_required, ask the user to reply to the target video or specify which recent video.
+"""
+cue = "parser_action"
+route_hint = "parser_slice"
+tool_hints = ["parser_video_slice_command"]
+tool_steps = [
+  { tool_name = "parser_video_slice_command", args = { text = "$current_prompt" } },
+]
+task_class = "parser_video_slice_command"
+policy_action = "deterministic"
+confidence = 0.92
+context_tags = [
+  "topic:video_trimming",
+  "capability:video_editing",
+  "capability:media_processing",
+  "intent:request_action",
+  "media:video",
+]
+negative_tags = []

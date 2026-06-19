@@ -20,6 +20,14 @@ cookies.json
 data_v2.db
 data_v3.db
 data
+!data/
+data/*
+!data/plugin_data/
+data/plugin_data/*
+!data/plugin_data/astrbot_plugin_thread_router/
+data/plugin_data/astrbot_plugin_thread_router/*
+!data/plugin_data/astrbot_plugin_thread_router/experiences/
+!data/plugin_data/astrbot_plugin_thread_router/experiences/*.toml
 configs/session
 configs/config.yaml
 cmd_config.json

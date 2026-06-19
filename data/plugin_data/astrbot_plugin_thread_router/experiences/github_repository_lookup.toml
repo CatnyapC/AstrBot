@@ -1,0 +1,55 @@
+[group]
+id = "github_repository_lookup"
+enabled = true
+
+[[lexical]]
+cue = "github_repository_lookup"
+enabled = true
+patterns = [
+  "GitHub 仓库",
+  "github 仓库",
+  "Github 仓库",
+  "GitHub repo",
+  "github repo",
+  "GitHub repository",
+  "github repository",
+]
+regex = [
+  "(GitHub|github|Github).{0,80}(仓库|项目|repo|repository)",
+  "(仓库|项目|repo|repository).{0,80}(GitHub|github|Github)",
+  "github\\.com[:/]+[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",
+]
+adds_tags = [
+  "entity:github",
+  "capability:github_repository_lookup",
+  "intent:public_repo_lookup",
+  "evidence:external_web_needed",
+]
+
+[[capsule]]
+id = "managed:github_repository_lookup"
+enabled = true
+summary = "Find and summarize a public GitHub repository"
+answer_contract = """
+Use the returned GitHub repository evidence as the answer.
+- If status=ok, say which repository was found, what it does, and give a brief usefulness judgment.
+- If multiple plausible candidates exist, mention the selected repository as the likely match.
+- If status is not ok, say no confident repository match was found instead of inventing details.
+"""
+cue = "github_repository_lookup"
+route_hint = "github_repository_lookup"
+tool_hints = ["github_repository_lookup"]
+tool_steps = [
+  { tool_name = "github_repository_lookup", args = { query = "$current_prompt", context_text = "$context_text", limit = 5, timeout_sec = 8 } },
+]
+task_class = "github_repository_lookup"
+policy_action = "main_reply"
+reply_length_policy = "relaxed"
+confidence = 0.93
+context_tags = [
+  "entity:github",
+  "capability:github_repository_lookup",
+  "intent:public_repo_lookup",
+  "evidence:external_web_needed",
+]
+negative_tags = []

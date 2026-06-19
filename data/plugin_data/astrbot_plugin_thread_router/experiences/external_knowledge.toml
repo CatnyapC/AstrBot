@@ -1,0 +1,279 @@
+[group]
+id = "external_knowledge"
+enabled = true
+
+[[lexical]]
+cue = "external_source"
+enabled = true
+patterns = [
+  "外部资料",
+  "外部来源",
+  "外部工具",
+  "外部",
+  "查一下",
+  "再查",
+  "查外部",
+  "搜索",
+  "搜一下",
+  "搜一搜",
+  "搜搜",
+  "帮我搜",
+  "上网查",
+  "公开资料",
+  "wiki",
+  "网上搜",
+  "怎么做",
+  "如何做",
+  "怎么制作",
+  "如何制作",
+  "怎么合成",
+  "如何合成",
+  "配方",
+  "做法",
+  "攻略",
+  "出处",
+  "出自",
+  "来源",
+  "原文",
+  "原句",
+  "谁说的",
+  "哪部作品",
+  "哪个游戏",
+  "什么梗",
+  "最新",
+  "最近",
+  "今天",
+  "新闻",
+  "价格",
+  "版本",
+  "发布",
+]
+regex = [
+  "how\\s+to",
+  "recipe",
+  "craft",
+  "source",
+  "origin",
+  "current",
+  "latest",
+  "today",
+  "news",
+  "price",
+  "version",
+  "(?:外部工具|外部).{0,20}(?:搜|查)",
+]
+adds_tags = [
+  "capability:external_lookup",
+  "capability:information_retrieval",
+  "evidence:external_web_needed",
+]
+
+[[lexical]]
+cue = "external_source"
+enabled = true
+patterns = [
+  "怎么做",
+  "如何做",
+  "怎么制作",
+  "如何制作",
+  "怎么合成",
+  "如何合成",
+  "配方",
+  "做法",
+  "攻略",
+]
+regex = [
+  "how\\s+to",
+  "recipe",
+  "craft",
+]
+adds_tags = [
+  "intent:public_how_to_lookup",
+  "capability:information_retrieval",
+]
+
+[[lexical]]
+cue = "external_source"
+enabled = true
+patterns = [
+  "出处",
+  "出自",
+  "来源",
+  "原文",
+  "原句",
+  "谁说的",
+  "哪部作品",
+  "哪部动画",
+  "哪个动画",
+  "什么动画",
+  "原作",
+  "哪个游戏",
+  "什么梗",
+  "改自",
+  "改了哪个动画",
+]
+regex = [
+  "source",
+  "origin",
+  "what\\s+anime",
+]
+adds_tags = [
+  "evidence:external_web_needed",
+  "intent:source_origin_lookup",
+  "intent:identify_video_origin",
+  "topic:meme",
+  "topic:animation_source_query",
+]
+
+[[lexical]]
+cue = "external_source"
+enabled = true
+patterns = []
+regex = [
+  "(?:视频|图片|截图|图|文件|附件).{0,40}(?:外部|搜|查|出处|来源|原作|哪个动画|哪部动画|改了|改的|改自)",
+  "(?:外部|搜|查|出处|来源|原作).{0,40}(?:视频|图片|截图|图|文件|附件|哪个动画|哪部动画|改了|改的|改自)",
+  "(?:this|that)\\s+(?:video|image|picture|file|attachment)",
+]
+adds_tags = [
+  "evidence:external_media_attachment_needed",
+]
+
+[[lexical]]
+cue = "external_source"
+enabled = true
+patterns = [
+  "最新",
+  "最近",
+  "今天",
+  "新闻",
+  "价格",
+  "版本",
+  "发布",
+]
+regex = [
+  "current",
+  "latest",
+  "today",
+  "news",
+  "price",
+  "version",
+]
+adds_tags = [
+  "intent:fresh_fact_lookup",
+]
+
+[[lexical]]
+cue = "mediawiki_public_source"
+enabled = true
+patterns = [
+  "未知伤亡",
+  "Scav Prototype",
+  "Casualties: Unknown",
+]
+regex = []
+adds_tags = [
+  "capability:mediawiki_public_lookup",
+  "source:mediawiki_scavprototype",
+  "topic:game_guide",
+]
+
+[[capsule]]
+id = "managed:mediawiki_scavprototype_public_source"
+enabled = true
+summary = "Public MediaWiki lookup for Scav Prototype / Casualties: Unknown game guide questions"
+cue = "mediawiki_public_source"
+route_hint = "external_knowledge"
+tool_hints = [
+  "bailian_external_knowledge",
+  "mediawiki_public_lookup",
+]
+task_class = "external_knowledge_lookup"
+policy_action = "system3"
+reply_length_policy = "relaxed"
+confidence = 0.92
+context_tags = [
+  "capability:external_lookup",
+  "capability:mediawiki_public_lookup",
+  "capability:information_retrieval",
+  "topic:game_guide",
+  "source:mediawiki_scavprototype",
+]
+required_tags = [
+  "evidence:external_web_needed",
+  "capability:mediawiki_public_lookup",
+]
+optional_tags = [
+  "capability:mediawiki_public_lookup",
+  "capability:information_retrieval",
+  "intent:how_to_make",
+  "intent:public_how_to_lookup",
+  "topic:game_guide",
+]
+negative_tags = []
+provider_preset = "no_site_limit"
+fallback_when = [
+  "unverified",
+  "insufficient",
+  "failed",
+  "timeout",
+  "source_count_zero",
+  "verification_unverified",
+]
+fallback_steps = [
+  { tool = "mediawiki_public_lookup", when = ["unverified", "insufficient", "failed", "timeout", "source_count_zero", "verification_unverified"], args = { api_urls = ["https://scavprototype.wiki.gg/api.php"], limit = 3 } },
+  { tool = "knowledge_reference", when = ["unverified", "insufficient", "failed", "timeout", "source_count_zero", "verification_unverified"], args = { reason = "external_knowledge_fallback" } },
+]
+
+[[capsule]]
+id = "managed:external_reference_lookup_public_source"
+enabled = true
+summary = "External/public source lookup; managed tool chooses KR for referenced media and Bailian for text/web lookup"
+cue = "external_source"
+route_hint = "external_knowledge"
+tool_hints = [
+  "external_reference_lookup",
+]
+tool_steps = [
+  { tool_name = "external_reference_lookup", args = { query = "$current_prompt", context_text = "$context_text", provider_preset = "no_site_limit" } },
+]
+task_class = "external_knowledge_lookup"
+policy_action = "system3"
+reply_length_policy = "relaxed"
+confidence = 0.9
+context_tags = [
+  "capability:external_lookup",
+  "capability:wiki_query",
+  "capability:information_retrieval",
+  "intent:information_lookup",
+  "intent:public_fact_lookup",
+  "intent:how_to_make",
+  "intent:public_how_to_lookup",
+  "topic:wiki_search",
+  "topic:medical_dosage",
+  "topic:volume_inquiry",
+  "topic:game_guide",
+  "topic:animation_source_query",
+  "topic:video_content_identification",
+  "entity:animation_style",
+  "capability:web_search",
+  "capability:browser_search",
+  "intent:identify_video_origin",
+]
+required_tags = [
+  "evidence:external_web_needed",
+]
+optional_tags = [
+  "capability:external_lookup",
+  "capability:information_retrieval",
+  "intent:how_to_make",
+  "intent:public_how_to_lookup",
+  "topic:game_guide",
+  "topic:animation_source_query",
+  "topic:video_content_identification",
+  "entity:animation_style",
+  "capability:web_search",
+  "capability:browser_search",
+  "intent:identify_video_origin",
+]
+negative_tags = [
+]
