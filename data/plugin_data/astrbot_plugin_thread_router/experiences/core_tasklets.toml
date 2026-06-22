@@ -198,7 +198,7 @@ negative_tags = []
 id = "managed:visual_memory_send_media"
 enabled = true
 summary = "Send/forward existing visual memory media"
-tasklet_tools_args_hint = "For router_visual_memory_query_and_send, read tag_hints from compact_context. Pick canonical tags relevant to the requested image and pass them as tags. Example: 龙族 -> dragon and jio -> feet means args.tags=[\"dragon\",\"feet\"]. Do not use reaction/viewer names such as 蓝狗 as DEPICTS entity unless the user asks for that subject in the image."
+tasklet_tools_args_hint = "For router_visual_memory_query_and_send, read tag_hints from compact_context. Pick canonical tags relevant to the requested image and pass them as tags. Example: 龙族 -> dragon and jio -> feet means args.tags=[\"dragon\",\"feet\"]. Set entity only when the requested image subject is that entity. For phrases like X喜欢/给X看/看X会不会出来/让X满意/更合适给X, X is viewer/preference context, not DEPICTS/entity; omit entity and use query/tags instead."
 cue = "media_send"
 route_hint = "visual_memory_send"
 tool_hints = [
