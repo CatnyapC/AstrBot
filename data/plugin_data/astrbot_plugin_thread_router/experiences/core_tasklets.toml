@@ -16,6 +16,28 @@ adds_tags = [
   "capability:local_memory_lookup",
 ]
 
+[[lexical]]
+cue = "claim_query"
+enabled = true
+patterns = [
+  "证据",
+  "原话",
+  "来源",
+  "最早",
+  "谁说",
+  "谁先",
+  "谁最先",
+  "谁称呼",
+  "谁认为",
+  "谁说过",
+]
+regex = []
+adds_tags = [
+  "intent:fact_lookup",
+  "intent:who_said",
+  "evidence:archive_quote",
+]
+
 [[capsule]]
 id = "seed:profile_impression_enumerated_lookup"
 enabled = true
@@ -376,6 +398,31 @@ task_class = "archive_evidence_lookup"
 policy_action = "fast_agentic"
 confidence = 0.82
 negative_tags = []
+
+[[capsule]]
+id = "managed:thread_archive_provenance_lookup"
+enabled = true
+summary = "Who said / earliest local archive provenance with quote evidence"
+cue = "claim_query"
+route_hint = "timeline_evidence"
+tool_hints = [
+  "router_timeline_context",
+]
+tool_steps = [
+  { tool_name = "router_timeline_context", args = { query = "$current_prompt", keywords = ["$current_prompt"], mode = "who_last", before_archive_id = "$current_archive_key", lookback_days = 365, limit = 12 } },
+]
+answer_contract = "Use router_timeline_context.answer_grounding and evidence_rows as source of truth. Prefer earliest direct quote/speaker evidence; say no archive evidence when empty."
+task_class = "claim_lookup"
+policy_action = "fast_agentic"
+confidence = 0.86
+context_tags = [
+  "intent:who_said",
+  "evidence:archive_quote",
+  "capability:archive_timeline_lookup",
+]
+negative_tags = [
+  "evidence:external_web_needed",
+]
 
 [[capsule]]
 id = "seed:social_claim_timeline_lookup"
