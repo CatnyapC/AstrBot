@@ -29,25 +29,31 @@ adds_tags = [
 [[capsule]]
 id = "managed:github_repository_lookup"
 enabled = true
-summary = "Find and summarize a public GitHub repository"
+summary = "Use Codex App Server with agent-reach GitHub tools to inspect and summarize a public repository"
 answer_contract = """
-Use the returned GitHub repository evidence as the answer.
-- If status=ok, say which repository was found, what it does, and give a brief usefulness judgment.
-- If multiple plausible candidates exist, mention the selected repository as the likely match.
-- If status is not ok, say no confident repository match was found instead of inventing details.
+Use agent-reach's GitHub path before Browser when possible.
+- Prefer gh CLI: gh search repos, gh repo view, gh search code, or gh api repos/OWNER/REPO/readme.
+- If a GitHub URL or owner/repo appears in context, inspect that repository directly.
+- Answer what the repo does, what the README emphasizes, and a brief usefulness judgment.
+- If no confident repository match exists, say so instead of inventing details.
 """
 cue = "github_repository_lookup"
-route_hint = "github_repository_lookup"
-tool_hints = ["github_repository_lookup"]
-tool_steps = [
-  { tool_name = "github_repository_lookup", args = { query = "$current_prompt", context_text = "$context_text", limit = 5, timeout_sec = 8 } },
+route_hint = "codex_app_server"
+tool_hints = [
+  "codex_app_server_probe",
+  "codex_browser_task",
 ]
-task_class = "github_repository_lookup"
-policy_action = "main_reply"
+tool_steps = [
+  { tool_name = "codex_app_server_probe", args = { timeout_sec = 10, port = 4510 } },
+  { tool_name = "codex_browser_task", args = { goal = "$current_prompt", allow_submit = false, timeout_sec = 900, port = 4510, execution_contract = "Use agent-reach's GitHub path before Browser when possible. Prefer gh CLI: gh search repos, gh repo view, gh search code, or gh api repos/OWNER/REPO/readme. Answer what the repo does, what the README emphasizes, and a brief usefulness judgment." } },
+]
+task_class = "codex_browser_task"
+policy_action = "fast_agentic"
 reply_length_policy = "relaxed"
 confidence = 0.93
 context_tags = [
   "entity:github",
+  "capability:codex_browser_task",
   "capability:github_repository_lookup",
   "intent:public_repo_lookup",
   "evidence:external_web_needed",
