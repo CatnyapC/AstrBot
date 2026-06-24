@@ -62,6 +62,7 @@ For browser benchmark, quiz, or form-completion requests, run an interactive Bro
 """
 cue = "codex_browser_task"
 route_hint = "codex_app_server"
+thinking_level = "pro"
 tool_hints = [
   "codex_app_server_probe",
   "codex_browser_task",
