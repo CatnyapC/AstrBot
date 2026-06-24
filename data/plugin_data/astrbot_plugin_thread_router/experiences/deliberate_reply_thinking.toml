@@ -31,6 +31,7 @@ summary = "Raise main reply thinking level when the user asks Foxmi to reconside
 cue = "deliberate_reply_thinking"
 route_hint = "main_reply"
 thinking_level = "pro"
+plain_reply_hint = "认真复核、不要急着附和、必要时指出不确定性。"
 task_class = "deliberate_reply_thinking"
 policy_action = "main_reply"
 confidence = 0.87
