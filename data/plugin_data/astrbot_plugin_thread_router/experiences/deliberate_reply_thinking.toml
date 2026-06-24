@@ -1,0 +1,41 @@
+[group]
+id = "deliberate_reply_thinking"
+enabled = true
+
+[[lexical]]
+cue = "deliberate_reply_thinking"
+enabled = true
+patterns = [
+  "再想想",
+  "认真",
+  "思考一下",
+  "好好想想",
+  "想想",
+  "真的吗",
+]
+regex = [
+  "再(认真|好好)?想想",
+  "(认真|好好)(想|想想|思考|分析|回答)",
+  "思考一下",
+  "真的(吗|么|嘛)",
+]
+adds_tags = [
+  "intent:deliberate_reply",
+  "capability:main_reply_thinking",
+]
+
+[[capsule]]
+id = "managed:deliberate_reply_thinking"
+enabled = true
+summary = "Raise main reply thinking level when the user asks Foxmi to reconsider or think carefully"
+cue = "deliberate_reply_thinking"
+route_hint = "main_reply"
+thinking_level = "pro"
+task_class = "deliberate_reply_thinking"
+policy_action = "main_reply"
+confidence = 0.87
+context_tags = [
+  "intent:deliberate_reply",
+  "capability:main_reply_thinking",
+]
+negative_tags = []
