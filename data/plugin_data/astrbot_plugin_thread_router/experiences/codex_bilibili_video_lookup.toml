@@ -62,7 +62,7 @@ tool_hints = [
   "router_send_text_message",
 ]
 tool_steps = [
-  { tool_name = "codex_bilibili_video_lookup", args = { allow_submit = false, timeout_sec = 120, port = 4510, max_completion_attempts = 1 } },
+  { tool_name = "codex_bilibili_video_lookup", args = { allow_submit = false, timeout_sec = 900, port = 4510 } },
   { tool_name = "router_send_text_message", args = { text = "$codex_bilibili_video_lookup.result_summary.video_url", source_status = "$codex_bilibili_video_lookup.status" } },
 ]
 task_class = "codex_bilibili_video_lookup"
