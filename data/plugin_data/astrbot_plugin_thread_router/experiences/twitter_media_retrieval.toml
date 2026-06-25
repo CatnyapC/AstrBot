@@ -1,0 +1,42 @@
+[group]
+id = "twitter_media_retrieval"
+enabled = true
+
+[[capsule]]
+id = "managed:twitter_media_retrieval"
+enabled = true
+summary = "Use Codex App Server to find and return recent Twitter/X media"
+answer_contract = """
+Use the Twitter/X shortcut before Browser.
+- Prefer `twitter status --json`, then `twitter user-posts` for a named @handle.
+- Find the newest post that contains art/image media matching the request.
+- Download the requested image into the browser result directory and expose it as media_path.
+- If no image media is found, report that instead of sending a screenshot of the timeline.
+"""
+cue = "twitter_media_retrieval"
+route_hint = "codex_app_server"
+thinking_level = "pro"
+tool_hints = [
+  "codex_app_server_probe",
+  "codex_browser_task",
+  "router_send_local_media",
+]
+tool_steps = [
+  { tool_name = "codex_app_server_probe", args = { timeout_sec = 10, port = 4510 } },
+  { tool_name = "codex_browser_task", args = { goal = "$current_prompt", allow_submit = false, timeout_sec = 900, port = 4510 } },
+  { tool_name = "router_send_local_media", args = { path = "$codex_browser_task.media_path", source_status = "$codex_browser_task.status", send_when = "explicit_media_return" } },
+]
+task_class = "codex_browser_task"
+policy_action = "fast_agentic"
+confidence = 0.95
+context_tags = [
+  "topic:twitter_search",
+  "capability:media_retrieval",
+  "capability:codex_browser_task",
+  "intent:search_and_display_art",
+]
+required_tags = [
+  "topic:twitter_search",
+  "capability:media_retrieval",
+]
+negative_tags = []
