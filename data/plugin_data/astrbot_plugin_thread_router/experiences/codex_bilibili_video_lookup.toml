@@ -1,0 +1,80 @@
+[group]
+id = "codex_bilibili_video_lookup"
+enabled = true
+
+[[lexical]]
+cue = "codex_bilibili_video_lookup"
+enabled = true
+patterns = [
+  "Bilibili 视频",
+  "B站 视频",
+  "b站视频",
+  "哔哩哔哩 视频",
+]
+regex = [
+  "(Bilibili|bilibili|B站|b站|哔哩哔哩).{0,100}(视频链接|链接|BV|找找|搜索|搜|查找|找出)",
+  "(?=.*(?:Bilibili|bilibili|B站|b站|哔哩哔哩))(?=.*(?:搜|找找|找一下|查找|找出))(?=.*视频)",
+  "(视频页面|视频播放页面|视频缩略图|视频截图).{0,120}(视频链接|链接|找找|搜索|搜|查找|找出)",
+]
+adds_tags = [
+  "entity:bilibili",
+  "capability:codex_bilibili_video_lookup",
+  "capability:codex_browser_task",
+  "intent:find_video_link",
+]
+
+[[lexical]]
+cue = "codex_bilibili_video_lookup"
+enabled = true
+requires_tags = ["intent:find_video_link"]
+patterns = [
+  "Bilibili",
+  "bilibili",
+  "B站",
+  "b站",
+  "哔哩哔哩",
+]
+regex = [
+  "(视频页面|视频播放页面|视频缩略图|视频截图)",
+]
+adds_tags = [
+  "entity:bilibili",
+  "capability:codex_bilibili_video_lookup",
+  "capability:codex_browser_task",
+]
+
+[[capsule]]
+id = "managed:codex_bilibili_video_lookup"
+enabled = true
+summary = "Use Codex browser to find and verify a Bilibili video link from screenshot/current context"
+answer_contract = """
+Use Codex Bilibili lookup result as side-effect context.
+- The browser worker must inspect attached screenshot images when present; OCR/caption text is only a hint.
+- If status=ok, router_send_text_message posts video_url directly; main reply must not repeat or prepend the link.
+- Do not say the browser is still searching after this tool succeeds.
+- If status=failed or needs_user, do not invent a BV link.
+"""
+cue = "codex_bilibili_video_lookup"
+route_hint = "codex_bilibili_lookup"
+thinking_level = "pro"
+tool_hints = [
+  "codex_bilibili_video_lookup",
+  "router_send_text_message",
+]
+tool_steps = [
+  { tool_name = "codex_bilibili_video_lookup", args = { allow_submit = false, timeout_sec = 900, port = 4510 } },
+  { tool_name = "router_send_text_message", args = { text = "$codex_bilibili_video_lookup.result_summary.video_url", source_status = "$codex_bilibili_video_lookup.status" } },
+]
+task_class = "codex_bilibili_video_lookup"
+policy_action = "fast_agentic"
+confidence = 0.96
+context_tags = [
+  "entity:bilibili",
+  "capability:codex_bilibili_video_lookup",
+  "capability:codex_browser_task",
+  "intent:find_video_link",
+]
+required_tags = [
+  "capability:codex_bilibili_video_lookup",
+]
+negative_tags = []

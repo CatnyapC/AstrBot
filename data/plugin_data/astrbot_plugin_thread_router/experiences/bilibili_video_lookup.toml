@@ -1,6 +1,6 @@
 [group]
 id = "bilibili_video_lookup"
-enabled = true
+enabled = false
 
 [[lexical]]
 cue = "bilibili_video_lookup"
