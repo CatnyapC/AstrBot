@@ -32,7 +32,7 @@ tool_hints = [
 tool_steps = [
   { tool_name = "recalled_archive_lookup", args = { query = "$current_prompt", before_archive_id = "$current_archive_key", lookback_days = 365, limit = 3 } },
 ]
-tasklet_tools_args_hint = "Use recalled_archive_lookup only for requests about recalled/withdrawn/deleted group messages. Let args LLM choose speaker, operator, keywords, and limit from the current request; do not use unrelated history as args."
+tasklet_tools_args_hint = "Use recalled_archive_lookup only for requests about recalled/withdrawn/deleted group messages. Args planner should use existing user-clue/alias context to fill speaker_id/operator_id when available; otherwise fill speaker/operator surfaces and let the tool resolve them. A撤回/由A撤回/最近A撤回的消息 -> operator/operator_id. B的发言记录/B被撤回/小B上次被撤回 -> speaker/speaker_id. A撤回的一条B发言 -> fill both. Add keywords only for extra content constraints, not for names. Keep before_archive_id=$current_archive_key, default limit small."
 answer_contract = "Use recalled_archive_lookup.tool_context as source of truth. If status=ok, answer with the matched recalled message text and keep attribution concise. If not_found, say no matching recalled archive row was found."
 task_class = "recalled_archive_lookup"
 policy_action = "deterministic"
