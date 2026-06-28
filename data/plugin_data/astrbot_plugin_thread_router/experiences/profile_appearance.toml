@@ -1,0 +1,15 @@
+[group]
+id = "profile_appearance"
+enabled = true
+
+[[capsule]]
+id = "seed:appearance_profile_lookup"
+enabled = true
+summary = "Appearance/avatar description request"
+cue = "appearance"
+route_hint = "profile_lookup"
+tool_hints = []
+task_class = "appearance_query"
+policy_action = "main_reply"
+confidence = 0.75
+negative_tags = []

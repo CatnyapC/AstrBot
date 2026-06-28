@@ -1,0 +1,41 @@
+[group]
+id = "entity_recall"
+enabled = true
+
+[[capsule]]
+id = "seed:entity_recall_profile_archive_kr"
+enabled = true
+summary = "Entity/person recall with profile first, archive history second, KR/web last"
+cue = "entity_recall"
+route_hint = "entity_recall"
+tool_hints = [
+  "entity_profile_context",
+  "router_timeline_context",
+  "knowledge_reference",
+]
+tool_steps = [
+  { tool_name = "resolve_alias", args = { target_surface = "$target" } },
+  { tool_name = "get_user_profile", args = { target_id = "$resolve_alias.target_id", fields = ["aliases", "impression", "species", "personality", "history"] } },
+]
+fallback_when = [
+  "insufficient",
+  "not_found",
+  "skipped",
+  "failed",
+  "no_answer",
+  "unavailable",
+]
+fallback_steps = [
+  { tool = "router_timeline_context", when = ["insufficient", "not_found", "skipped", "failed"], args = { query = "$target", keywords = ["$target"], mode = "keyword_search", before_archive_id = "$current_archive_key", lookback_days = 365, limit = 8 } },
+  { tool = "knowledge_reference", when = ["insufficient", "not_found", "skipped", "failed", "no_answer", "unavailable"], args = { subject = "$target", reason = "entity_recall_fallback" } },
+]
+fallback_order = [
+  "profile",
+  "archive_history",
+  "knowledge_reference",
+]
+answer_contract = "answer_only"
+task_class = "entity_recall"
+policy_action = "deterministic"
+confidence = 0.86
+negative_tags = []

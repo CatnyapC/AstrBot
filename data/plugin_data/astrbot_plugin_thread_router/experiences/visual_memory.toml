@@ -1,0 +1,225 @@
+[group]
+id = "visual_memory"
+enabled = true
+
+[[capsule]]
+id = "managed:visual_memory_find_media"
+enabled = true
+summary = "Find/search visual memory by image or description"
+cue = "media_query"
+route_hint = "visual_memory_send"
+tool_hints = [
+  "router_visual_memory_query_and_send",
+]
+tool_steps = [
+  { tool_name = "router_visual_memory_query_and_send", args = { query = "$current_prompt" } },
+]
+task_class = "visual_memory_send"
+policy_action = "fast_agentic"
+confidence = 0.80
+negative_tags = []
+
+[[capsule]]
+id = "managed:visual_media_grounding"
+enabled = true
+summary = "Inspect current or replied visual media directly"
+cue = "media_grounding"
+route_hint = "media_grounding"
+tool_hints = [
+  "router_visual_media_grounding_query",
+]
+tool_steps = [
+  { tool_name = "router_visual_media_grounding_query", args = { query = "$current_prompt", context_text = "$context_text", reply_archive_id = "$reply_archive_id", archive_id = "$current_archive_key", force_refresh = true } },
+]
+task_class = "media_grounding"
+policy_action = "system3"
+confidence = 0.90
+context_tags = [
+  "intent:image_question",
+  "media:image",
+  "capability:media_grounding",
+]
+negative_tags = []
+
+[[capsule]]
+id = "managed:visual_memory_send_alternate_media"
+enabled = true
+summary = "Send another existing visual memory media item; exclude recent successful sends"
+cue = "media_send_alternate"
+route_hint = "visual_memory_send"
+tool_hints = [
+  "router_visual_memory_query_and_send",
+]
+tool_steps = [
+  { tool_name = "router_visual_memory_query_and_send", args = { query = "$current_prompt", exclude_policy = "exclude_previous", query_constraints = ["alternate"] } },
+]
+task_class = "visual_memory_send"
+policy_action = "fast_agentic"
+confidence = 0.92
+negative_tags = []
+
+[[capsule]]
+id = "managed:visual_memory_send_media"
+enabled = true
+summary = "Send/forward existing visual memory media"
+tasklet_tools_args_hint = "For router_visual_memory_query_and_send, read tag_hints from compact_context. Pick canonical tags relevant to the requested image and pass them as tags. Example: 龙族 -> dragon and jio -> feet means args.tags=[\"dragon\",\"feet\"]. Set entity only when the requested image subject is that entity. For phrases like X喜欢/给X看/看X会不会出来/让X满意/更合适给X, X is viewer/preference context, not DEPICTS/entity; omit X from entity, query, and tags. Do not pass X's canonical tag in args.tags unless the image itself should depict X."
+cue = "media_send"
+route_hint = "visual_memory_send"
+tool_hints = [
+  "router_visual_memory_query_and_send",
+]
+tool_steps = [
+  { tool_name = "router_visual_memory_query_and_send", args = { query = "$current_prompt" } },
+]
+task_class = "visual_memory_send"
+policy_action = "fast_agentic"
+confidence = 0.85
+negative_tags = []
+
+[[capsule]]
+id = "managed:visual_memory_correction"
+enabled = true
+summary = "Correct VisualMemory tags or VisualMemory-to-Entity relation claims"
+cue = "visual_memory_correction"
+route_hint = "visual_memory_correction"
+tool_hints = [
+  "router_visual_media_grounding_query",
+  "router_visual_memory_correction",
+]
+tool_steps = [
+  { tool_name = "router_visual_media_grounding_query", args = { query = "$current_prompt", context_text = "$context_text", reply_archive_id = "$reply_archive_id", archive_id = "$current_archive_key", force_refresh = true } },
+  { tool_name = "router_visual_memory_correction", args = { query = "$current_prompt", archive_ref = "$current_archive_key", apply_mode = "guarded_apply" } },
+]
+task_class = "visual_memory_correction"
+policy_action = "deterministic"
+confidence = 0.88
+context_tags = [
+  "intent:visual_memory_correction",
+  "media:image",
+  "capability:visual_memory_correction",
+]
+negative_tags = [
+  "intent:public_how_to_lookup",
+  "evidence:external_web_needed",
+]
+
+[[lexical]]
+cue = "media_query"
+enabled = true
+patterns = [
+  "发过吗",
+  "找一下",
+  "有没有",
+  "没有",
+  "真的没有",
+]
+regex = []
+adds_tags = [
+  "intent:image_question",
+  "media:image",
+  "capability:visual_memory_query",
+]
+
+[[lexical]]
+cue = "media_grounding"
+enabled = true
+patterns = [
+  "再看看",
+  "重新看",
+  "重看",
+  "仔细看看",
+  "仔细看",
+  "看看图里",
+  "看图里",
+  "看清楚",
+  "描述一下这张图",
+  "描述这张图",
+  "这张图里",
+  "这图里",
+  "图里有什么",
+  "图片里有什么",
+  "照片里有什么",
+  "这张是什么",
+  "这张是谁",
+]
+regex = [
+  "(?:仔细|重新|再)?看.{0,8}(?:这张|这图|图里|图片里|照片里|图上)",
+  "描述.{0,8}(?:这张|这图|图片|照片|图里)",
+]
+adds_tags = [
+  "intent:image_question",
+  "media:image",
+  "capability:media_grounding",
+]
+
+[[lexical]]
+cue = "media_send"
+enabled = true
+patterns = [
+  "发一张",
+  "发张",
+  "发个",
+  "发一下",
+  "发这张",
+  "发出来",
+  "发出来看看",
+  "发图",
+  "发送",
+  "转发",
+  "传图",
+  "传一下",
+]
+regex = []
+adds_tags = [
+  "intent:image_question",
+  "media:image",
+  "capability:visual_memory_query",
+  "capability:visual_memory_send",
+]
+
+[[lexical]]
+cue = "media_send_alternate"
+enabled = true
+patterns = [
+  "再发一张",
+  "再发一个",
+  "再来一张",
+  "再来一个",
+  "换一张",
+  "换一个",
+  "另一张",
+  "另一个",
+]
+regex = [
+  "(?:别的|不同).{0,12}(?:图|图片|照片|表情|头像|图标)",
+  "(?:图|图片|照片|表情|头像|图标).{0,12}(?:别的|不同|另一张|另一个)",
+]
+adds_tags = [
+  "intent:image_question",
+  "media:image",
+  "capability:visual_memory_query",
+  "capability:visual_memory_send",
+  "intent:image_send_alternate",
+]
+
+[[lexical]]
+cue = "visual_memory_correction"
+enabled = true
+patterns = [
+  "不是这个图",
+  "不是这张图",
+  "不是cb的图",
+  "标签错",
+  "图标错",
+  "认错",
+  "错图",
+]
+regex = [
+  "是.+不是.+(?:图|图片|照片|图标|表情)",
+  "不是.+(?:的)?(?:图|图片|照片|图标|表情)",
+]
+adds_tags = [
+  "intent:visual_memory_correction",
+  "media:image",
+  "capability:visual_memory_correction",
+]

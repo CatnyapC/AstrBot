@@ -1,0 +1,18 @@
+[group]
+id = "contextual_followup"
+enabled = true
+
+[[capsule]]
+id = "seed:contextual_followup_local_context"
+enabled = true
+summary = "Weak reply/context follow-up answered from replied bot/local context"
+cue = "contextual_followup"
+route_hint = "contextual_followup"
+tool_hints = [
+  "reply_context",
+  "router_timeline_context",
+]
+task_class = "contextual_followup"
+policy_action = "deterministic"
+confidence = 0.80
+negative_tags = []

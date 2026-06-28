@@ -1,0 +1,30 @@
+[group]
+id = "profile_impression"
+enabled = true
+
+[[capsule]]
+id = "seed:profile_impression_enumerated_lookup"
+enabled = true
+summary = "Enumerated profile impression request; resolve target and fetch enough profile clues"
+cue = "profile_impression_enumerate"
+route_hint = "profile_impression_lookup"
+tool_hints = [
+  "resolve_alias",
+  "get_user_profile",
+]
+tool_steps = [
+  { tool_name = "resolve_alias", args = { target_surface = "$target" } },
+  { tool_name = "get_user_profile", args = { target_id = "$resolve_alias.target_id", fields = ["species", "facts", "personality", "history"], requested_count = "$requested_count" } },
+]
+answer_contract = "answer_only"
+task_class = "profile_impression_query"
+policy_action = "main_reply"
+reply_length_policy = "relaxed"
+confidence = 0.88
+context_tags = [
+  "intent:profile_impression_query",
+  "intent:impression_query",
+  "capability:entity_profile_lookup",
+  "shape:enumerate",
+]
+negative_tags = []

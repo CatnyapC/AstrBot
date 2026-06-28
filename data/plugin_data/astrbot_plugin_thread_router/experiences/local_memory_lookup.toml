@@ -1,0 +1,25 @@
+[group]
+id = "local_memory_lookup"
+enabled = true
+
+[[capsule]]
+id = "seed:group_memory_fact_lookup"
+enabled = true
+summary = "Local group memory / fact recall question"
+cue = "local_memory"
+route_hint = "memory_lookup"
+tool_hints = [
+  "router_memory_query",
+]
+tool_steps = [
+  { tool_name = "router_memory_query", args = { query_text = "$current_prompt", target_hint = "$target", memory_intent = "fact_lookup", top_k = 6 } },
+]
+task_class = "fact_lookup"
+policy_action = "main_reply"
+confidence = 0.65
+negative_tags = [
+  "intent:entity_recall",
+  "capability:entity_profile_lookup",
+  "intent:contextual_followup",
+  "evidence:archive_quote",
+]

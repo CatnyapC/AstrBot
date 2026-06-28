@@ -1,0 +1,15 @@
+[group]
+id = "approval_decision"
+enabled = true
+
+[[capsule]]
+id = "seed:approval_decision"
+enabled = true
+summary = "Approve/reject pending approval request"
+cue = "admin_action"
+route_hint = "approval_action"
+tool_hints = []
+task_class = "approval_decision"
+policy_action = "main_reply"
+confidence = 0.85
+negative_tags = []

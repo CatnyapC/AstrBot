@@ -1,0 +1,59 @@
+[group]
+id = "identity_memory_lookup"
+enabled = true
+
+[[lexical]]
+cue = "identity_memory_lookup"
+enabled = true
+patterns = []
+regex = [
+  "(?:^|[\\s，,。？?！!])谁是[^\\s，,。？?！!]{1,40}",
+  "(?:^|[\\s，,。？?！!])[^\\s，,。？?！!]{1,40}是谁",
+  "(?:^|[\\s，,。？?！!])[^\\s，,。？?！!]{1,40}是什么人",
+]
+adds_tags = [
+  "topic:identity_query",
+  "capability:local_memory_lookup",
+]
+
+[[capsule]]
+id = "managed:identity_memory_archive_external_lookup"
+enabled = true
+summary = "Identity lookup from graph memory, then local archive, then external reference"
+cue = "identity_memory_lookup"
+route_hint = "identity_memory_lookup"
+tool_hints = [
+  "router_memory_query",
+  "router_timeline_context",
+  "bailian_external_knowledge",
+]
+tool_steps = [
+  { tool_name = "router_memory_query", args = { query_text = "$current_prompt", target_hint = "$target", memory_intent = "fact_lookup", kinds = ["fact_claim", "knowledge_claim", "social_impression"], top_k = 6 } },
+]
+fallback_when = [
+  "not_found",
+  "timeout",
+  "failed",
+  "unavailable",
+  "blocked",
+  "source_count_zero",
+]
+fallback_steps = [
+  { tool = "router_timeline_context", when = ["not_found", "timeout", "failed", "unavailable", "blocked", "source_count_zero"], args = { query = "$current_prompt", keywords = ["$current_prompt"], mode = "keyword_search", before_archive_id = "$current_archive_key", lookback_days = 365, limit = 8 } },
+  { tool = "bailian_external_knowledge", when = ["not_found", "no_answer", "timeout", "failed", "unavailable", "blocked", "source_count_zero"], args = { query = "$current_prompt" } },
+]
+answer_contract = "answer_only"
+task_class = "identity_lookup"
+policy_action = "main_reply"
+confidence = 0.81
+context_tags = [
+  "topic:identity_query",
+  "intent:information_seeking",
+  "capability:local_memory_lookup",
+]
+negative_tags = [
+  "intent:entity_recall",
+  "intent:profile_impression_query",
+  "evidence:archive_quote",
+  "media:image",
+]

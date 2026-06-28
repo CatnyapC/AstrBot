@@ -56,3 +56,15 @@ context_tags = [
   "media:video",
 ]
 negative_tags = []
+
+[[capsule]]
+id = "seed:parser_video_slice_command"
+enabled = true
+summary = "Parser video slice/clip request"
+cue = "parser_action"
+route_hint = "parser_slice"
+tool_hints = []
+task_class = "parser_video_slice_command"
+policy_action = "deterministic"
+confidence = 0.90
+negative_tags = []

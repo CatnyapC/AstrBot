@@ -1,0 +1,15 @@
+[group]
+id = "identity_name_resolution"
+enabled = true
+
+[[capsule]]
+id = "seed:identity_name_resolution"
+enabled = true
+summary = "Name/identity query for group members"
+cue = "name_query"
+route_hint = "identity_resolution"
+tool_hints = []
+task_class = "name_query"
+policy_action = "main_reply"
+confidence = 0.70
+negative_tags = []
