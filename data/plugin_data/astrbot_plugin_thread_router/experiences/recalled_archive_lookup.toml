@@ -1,0 +1,46 @@
+[group]
+id = "recalled_archive_lookup"
+enabled = true
+
+[[lexical]]
+cue = "recalled_archive_lookup"
+enabled = true
+patterns = [
+  "撤回",
+  "撤回的",
+  "重新发",
+  "再发一遍",
+  "发言记录",
+]
+regex = []
+adds_tags = [
+  "intent:fact_lookup",
+  "evidence:archive_quote",
+  "capability:archive_timeline_lookup",
+  "intent:recalled_archive_lookup",
+]
+
+[[capsule]]
+id = "managed:recalled_archive_lookup"
+enabled = true
+summary = "Find a locally archived recalled group message by speaker/operator hints"
+cue = "recalled_archive_lookup"
+route_hint = "timeline_evidence"
+tool_hints = [
+  "recalled_archive_lookup",
+]
+tool_steps = [
+  { tool_name = "recalled_archive_lookup", args = { query = "$current_prompt", before_archive_id = "$current_archive_key", lookback_days = 365, limit = 3 } },
+]
+tasklet_tools_args_hint = "Use recalled_archive_lookup only for requests about recalled/withdrawn/deleted group messages. Let args LLM choose speaker, operator, keywords, and limit from the current request; do not use unrelated history as args."
+answer_contract = "Use recalled_archive_lookup.tool_context as source of truth. If status=ok, answer with the matched recalled message text and keep attribution concise. If not_found, say no matching recalled archive row was found."
+task_class = "recalled_archive_lookup"
+policy_action = "deterministic"
+confidence = 0.84
+context_tags = [
+  "intent:recalled_archive_lookup",
+  "evidence:archive_quote",
+  "capability:archive_timeline_lookup",
+]
+negative_tags = [
+]
