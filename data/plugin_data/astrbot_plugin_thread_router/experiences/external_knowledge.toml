@@ -42,7 +42,6 @@ patterns = [
   "什么梗",
   "最新",
   "最近",
-  "今天",
   "新闻",
   "价格",
   "版本",
@@ -56,10 +55,13 @@ regex = [
   "origin",
   "current",
   "latest",
-  "today",
   "news",
   "price",
   "version",
+  "(?:今天|今日).{0,12}(?:天气|新闻|价格|股价|版本|发布|日程|赛程|赛事|比赛)",
+  "(?:天气|新闻|价格|股价|版本|发布|日程|赛程|赛事|比赛).{0,12}(?:今天|今日)",
+  "today.{0,24}(?:weather|news|price|version|release|schedule|fixture|match|game|sports)",
+  "(?:weather|news|price|version|release|schedule|fixture|match|game|sports).{0,24}today",
   "(?:外部工具|外部).{0,20}(?:搜|查)",
 ]
 adds_tags = [
@@ -144,7 +146,6 @@ enabled = true
 patterns = [
   "最新",
   "最近",
-  "今天",
   "新闻",
   "价格",
   "版本",
@@ -153,10 +154,13 @@ patterns = [
 regex = [
   "current",
   "latest",
-  "today",
   "news",
   "price",
   "version",
+  "(?:今天|今日).{0,12}(?:天气|新闻|价格|股价|版本|发布|日程|赛程|赛事|比赛)",
+  "(?:天气|新闻|价格|股价|版本|发布|日程|赛程|赛事|比赛).{0,12}(?:今天|今日)",
+  "today.{0,24}(?:weather|news|price|version|release|schedule|fixture|match|game|sports)",
+  "(?:weather|news|price|version|release|schedule|fixture|match|game|sports).{0,24}today",
 ]
 adds_tags = [
   "intent:fresh_fact_lookup",
