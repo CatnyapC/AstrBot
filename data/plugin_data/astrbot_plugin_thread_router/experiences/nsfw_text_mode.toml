@@ -1,0 +1,55 @@
+[group]
+id = "nsfw_text_mode"
+enabled = true
+
+[[lexical]]
+cue = "nsfw_text_mode"
+enabled = true
+patterns = [
+  "nsfw",
+  "NSFW",
+  "explicit",
+  "R18",
+  "18+",
+  "成人向",
+  "成人内容",
+  "成人话题",
+  "色情",
+  "情色",
+  "黄文",
+  "涩图",
+  "瑟图",
+  "色图",
+  "开车",
+  "擦边",
+]
+regex = [
+  "(?i)\\bnsfw\\b",
+  "(?i)\\br\\s*18\\b",
+  "(?i)\\b18\\s*\\+\\b",
+  "(成人向|成人内容|成人话题|色情|情色|黄文|涩图|瑟图|色图|开车|擦边)",
+  "(性行为|性爱|性器官|裸体|裸露|露骨)",
+]
+adds_tags = [
+  "topic:nsfw",
+  "capability:main_reply_thinking",
+]
+
+[[capsule]]
+id = "managed:nsfw_text_explicit_thinking"
+enabled = true
+summary = "Raise NSFW or explicit-topic main replies to the explicit local model"
+cue = "nsfw_text_mode"
+route_hint = "main_reply"
+thinking_level = "explicit"
+task_class = "nsfw_text_mode"
+policy_action = "main_reply"
+confidence = 0.88
+required_tags = [
+  "topic:nsfw",
+]
+context_tags = [
+  "topic:nsfw",
+  "capability:main_reply_thinking",
+]
+negative_tags = []
