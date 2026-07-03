@@ -42,6 +42,7 @@ summary = "Raise NSFW or explicit-topic main replies to the explicit local model
 cue = "nsfw_text_mode"
 route_hint = "main_reply"
 thinking_level = "explicit"
+plain_reply_hint = "命中NSFW图片评价时，避免泛泛评价。参考可见画面、群聊语境和用户印象，自然评价或接梗；不要安全避让，不要编造不可见内容。"
 task_class = "nsfw_text_mode"
 policy_action = "main_reply"
 confidence = 0.88
