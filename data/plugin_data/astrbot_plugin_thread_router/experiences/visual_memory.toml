@@ -34,14 +34,18 @@ confidence = 0.90
 context_tags = [
   "topic:image_description",
   "intent:image_question",
+  "intent:visual_description",
   "intent:answer",
   "media:image",
   "capability:visual_understanding",
   "capability:visual_analysis",
   "capability:media_grounding",
 ]
-required_tags = [
+required_any_tags = [
   "topic:image_description",
+  "intent:visual_description",
+  "capability:visual_understanding",
+  "capability:visual_analysis",
 ]
 negative_tags = []
 
