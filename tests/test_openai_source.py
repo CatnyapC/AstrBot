@@ -1162,6 +1162,40 @@ async def test_apply_provider_specific_extra_body_overrides_disables_ollama_thin
 
 
 @pytest.mark.asyncio
+async def test_apply_provider_specific_extra_body_overrides_maps_llama_cpp_enable_thinking():
+    provider = _make_provider(
+        {
+            "id": "llama_cpp_tag/gemma4-heretic",
+            "provider_source_id": "llama_cpp_tag",
+        }
+    )
+    try:
+        extra_body = {"enable_thinking": False, "temperature": 0.2}
+
+        provider._apply_provider_specific_extra_body_overrides(extra_body)
+
+        assert extra_body["chat_template_kwargs"]["enable_thinking"] is False
+        assert "enable_thinking" not in extra_body
+        assert extra_body["temperature"] == 0.2
+    finally:
+        await provider.terminate()
+
+
+@pytest.mark.asyncio
+async def test_apply_provider_specific_extra_body_overrides_keeps_non_llama_cpp_enable_thinking():
+    provider = _make_provider({"provider_source_id": "dashscope_qwen"})
+    try:
+        extra_body = {"enable_thinking": False}
+
+        provider._apply_provider_specific_extra_body_overrides(extra_body)
+
+        assert extra_body["enable_thinking"] is False
+        assert "chat_template_kwargs" not in extra_body
+    finally:
+        await provider.terminate()
+
+
+@pytest.mark.asyncio
 async def test_query_injects_reasoning_effort_none_for_ollama(monkeypatch):
     provider = _make_provider(
         {

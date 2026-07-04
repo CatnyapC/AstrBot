@@ -512,6 +512,20 @@ class ProviderOpenAIOfficial(Provider):
     def _apply_provider_specific_extra_body_overrides(
         self, extra_body: dict[str, Any]
     ) -> None:
+        provider_key = str(
+            self.provider_config.get("provider_source_id")
+            or self.provider_config.get("id")
+            or ""
+        )
+        if provider_key.startswith("llama_cpp") and "enable_thinking" in extra_body:
+            chat_template_kwargs = extra_body.get("chat_template_kwargs")
+            if not isinstance(chat_template_kwargs, dict):
+                chat_template_kwargs = {}
+                extra_body["chat_template_kwargs"] = chat_template_kwargs
+            chat_template_kwargs.setdefault(
+                "enable_thinking", extra_body.pop("enable_thinking")
+            )
+
         if self.provider_config.get("provider") != "ollama":
             return
         if not self._ollama_disable_thinking_enabled():
