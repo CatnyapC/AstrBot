@@ -32,9 +32,16 @@ task_class = "media_grounding"
 policy_action = "system3"
 confidence = 0.90
 context_tags = [
+  "topic:image_description",
   "intent:image_question",
+  "intent:answer",
   "media:image",
+  "capability:visual_understanding",
+  "capability:visual_analysis",
   "capability:media_grounding",
+]
+required_tags = [
+  "topic:image_description",
 ]
 negative_tags = []
 
