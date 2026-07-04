@@ -1175,8 +1175,31 @@ async def test_apply_provider_specific_extra_body_overrides_maps_llama_cpp_enabl
         provider._apply_provider_specific_extra_body_overrides(extra_body)
 
         assert extra_body["chat_template_kwargs"]["enable_thinking"] is False
+        assert extra_body["thinking_budget_tokens"] == 0
         assert "enable_thinking" not in extra_body
         assert extra_body["temperature"] == 0.2
+    finally:
+        await provider.terminate()
+
+
+@pytest.mark.asyncio
+async def test_apply_provider_specific_extra_body_overrides_adds_llama_cpp_budget_for_chat_template_false():
+    provider = _make_provider(
+        {
+            "id": "llama_cpp_tag/gemma4-heretic",
+            "provider_source_id": "llama_cpp_tag",
+        }
+    )
+    try:
+        extra_body = {
+            "chat_template_kwargs": {"enable_thinking": False},
+            "thinking_budget_tokens": 8,
+        }
+
+        provider._apply_provider_specific_extra_body_overrides(extra_body)
+
+        assert extra_body["chat_template_kwargs"]["enable_thinking"] is False
+        assert extra_body["thinking_budget_tokens"] == 8
     finally:
         await provider.terminate()
 
@@ -1191,6 +1214,7 @@ async def test_apply_provider_specific_extra_body_overrides_keeps_non_llama_cpp_
 
         assert extra_body["enable_thinking"] is False
         assert "chat_template_kwargs" not in extra_body
+        assert "thinking_budget_tokens" not in extra_body
     finally:
         await provider.terminate()
 

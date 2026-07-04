@@ -517,14 +517,17 @@ class ProviderOpenAIOfficial(Provider):
             or self.provider_config.get("id")
             or ""
         )
-        if provider_key.startswith("llama_cpp") and "enable_thinking" in extra_body:
+        if provider_key.startswith("llama_cpp"):
             chat_template_kwargs = extra_body.get("chat_template_kwargs")
             if not isinstance(chat_template_kwargs, dict):
                 chat_template_kwargs = {}
                 extra_body["chat_template_kwargs"] = chat_template_kwargs
-            chat_template_kwargs.setdefault(
-                "enable_thinking", extra_body.pop("enable_thinking")
-            )
+            if "enable_thinking" in extra_body:
+                chat_template_kwargs.setdefault(
+                    "enable_thinking", extra_body.pop("enable_thinking")
+                )
+            if chat_template_kwargs.get("enable_thinking") is False:
+                extra_body.setdefault("thinking_budget_tokens", 0)
 
         if self.provider_config.get("provider") != "ollama":
             return
