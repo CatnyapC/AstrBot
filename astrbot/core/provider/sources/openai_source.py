@@ -872,7 +872,7 @@ class ProviderOpenAIOfficial(Provider):
         self, completion: ChatCompletion, tools: ToolSet | None
     ) -> LLMResponse:
         """Parse OpenAI ChatCompletion into LLMResponse"""
-        llm_response = LLMResponse("assistant")
+        llm_response = LLMResponse("assistant", completion_text="")
 
         choices = self._coerce_choices(completion, field_name="completion.choices")
         if len(choices) == 0:

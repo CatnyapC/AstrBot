@@ -354,6 +354,38 @@ async def test_groq_payload_drops_reasoning_content_from_assistant_history():
 
 
 @pytest.mark.asyncio
+async def test_openai_reasoning_only_completion_keeps_text_empty():
+    provider = _make_provider()
+    try:
+        completion = ChatCompletion.model_validate(
+            {
+                "id": "chatcmpl-reasoning-only",
+                "object": "chat.completion",
+                "created": 1,
+                "model": "gpt-4o-mini",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "reasoning_content": "hidden chain of thought",
+                        },
+                    }
+                ],
+            }
+        )
+
+        response = await provider._parse_openai_completion(completion, tools=None)
+
+        assert response.completion_text == ""
+        assert response.reasoning_content == "hidden chain of thought"
+    finally:
+        await provider.terminate()
+
+
+@pytest.mark.asyncio
 async def test_handle_api_error_content_moderated_without_images_raises():
     provider = _make_provider(
         {"image_moderation_error_patterns": ["file:content-moderated"]}
