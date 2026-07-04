@@ -4,16 +4,12 @@ enabled = true
 
 [[capsule]]
 id = "managed:visual_memory_find_media"
-enabled = true
+enabled = false
 summary = "Find/search visual memory by image or description"
 cue = "media_query"
 route_hint = "visual_memory_send"
-tool_hints = [
-  "router_visual_memory_query_and_send",
-]
-tool_steps = [
-  { tool_name = "router_visual_memory_query_and_send", args = { query = "$current_prompt" } },
-]
+tool_hints = []
+tool_steps = []
 task_class = "visual_memory_send"
 policy_action = "fast_agentic"
 confidence = 0.80
@@ -44,16 +40,12 @@ negative_tags = []
 
 [[capsule]]
 id = "managed:visual_memory_send_alternate_media"
-enabled = true
+enabled = false
 summary = "Send another existing visual memory media item; exclude recent successful sends"
 cue = "media_send_alternate"
 route_hint = "visual_memory_send"
-tool_hints = [
-  "router_visual_memory_query_and_send",
-]
-tool_steps = [
-  { tool_name = "router_visual_memory_query_and_send", args = { query = "$current_prompt", exclude_policy = "exclude_previous", query_constraints = ["alternate"] } },
-]
+tool_hints = []
+tool_steps = []
 task_class = "visual_memory_send"
 policy_action = "fast_agentic"
 confidence = 0.92
@@ -63,14 +55,14 @@ negative_tags = []
 id = "managed:visual_memory_send_media"
 enabled = true
 summary = "Send/forward existing visual memory media"
-tasklet_tools_args_hint = "For router_visual_memory_query_and_send, read tag_hints from compact_context. Pick canonical tags relevant to the requested image and pass them as tags. Example: 龙族 -> dragon and jio -> feet means args.tags=[\"dragon\",\"feet\"]. Set entity only when the requested image subject is that entity. For phrases like X喜欢/给X看/看X会不会出来/让X满意/更合适给X, X is viewer/preference context, not DEPICTS/entity; omit X from entity, query, and tags. Do not pass X's canonical tag in args.tags unless the image itself should depict X."
+tasklet_tools_args_hint = ""
 cue = "media_send"
 route_hint = "visual_memory_send"
 tool_hints = [
-  "router_visual_memory_query_and_send",
+  "continuous_brain_media_task",
 ]
 tool_steps = [
-  { tool_name = "router_visual_memory_query_and_send", args = { query = "$current_prompt" } },
+  { tool_name = "continuous_brain_media_task", args = { text = "$current_prompt", archive_id = "$current_archive_key" } },
 ]
 task_class = "visual_memory_send"
 policy_action = "fast_agentic"

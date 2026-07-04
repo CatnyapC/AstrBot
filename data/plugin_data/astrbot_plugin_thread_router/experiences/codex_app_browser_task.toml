@@ -71,7 +71,7 @@ tool_hints = [
 tool_steps = [
   { tool_name = "codex_app_server_probe", args = { timeout_sec = 10, port = 4510 } },
   { tool_name = "codex_browser_task", args = { allow_submit = true, timeout_sec = 900, port = 4510 } },
-  { tool_name = "router_send_local_media", args = { path = "$codex_browser_task.screenshot_path", source_status = "$codex_browser_task.status", send_when = "explicit_media_return" } },
+  { tool_name = "router_send_local_media", args = { path = "$codex_browser_task.media_path", source_status = "$codex_browser_task.status", send_when = "explicit_media_return" } },
 ]
 task_class = "codex_browser_task"
 policy_action = "fast_agentic"

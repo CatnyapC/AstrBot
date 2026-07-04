@@ -48,16 +48,12 @@ patterns = [
   "发布",
 ]
 regex = [
-  "how\\s+to",
-  "recipe",
-  "craft",
-  "source",
-  "origin",
-  "current",
-  "latest",
-  "news",
-  "price",
-  "version",
+  "(?i)\\bhow\\s+to\\b",
+  "(?i)\\b(?:recipe|crafting recipe)\\b",
+  "(?i)\\b(?:source|origin)\\s+(?:of|for)\\b",
+  "(?i)\\b(?:what|which|where).{0,40}\\b(?:source|origin|from)\\b",
+  "(?i)\\b(?:what(?:'s| is)|which|find|search|look up|check).{0,40}\\b(?:current|latest|news|price|version|release)\\b",
+  "(?i)\\b(?:current|latest)\\s+(?:version|release|news|price)\\s+(?:of|for)\\b",
   "(?:今天|今日).{0,12}(?:天气|新闻|价格|股价|版本|发布|日程|赛程|赛事|比赛)",
   "(?:天气|新闻|价格|股价|版本|发布|日程|赛程|赛事|比赛).{0,12}(?:今天|今日)",
   "today.{0,24}(?:weather|news|price|version|release|schedule|fixture|match|game|sports)",
@@ -85,9 +81,8 @@ patterns = [
   "攻略",
 ]
 regex = [
-  "how\\s+to",
-  "recipe",
-  "craft",
+  "(?i)\\bhow\\s+to\\b",
+  "(?i)\\b(?:recipe|crafting recipe)\\b",
 ]
 adds_tags = [
   "intent:public_how_to_lookup",
@@ -115,9 +110,9 @@ patterns = [
   "改了哪个动画",
 ]
 regex = [
-  "source",
-  "origin",
-  "what\\s+anime",
+  "(?i)\\b(?:source|origin)\\s+(?:of|for)\\b",
+  "(?i)\\b(?:what|which|where).{0,40}\\b(?:source|origin|from)\\b",
+  "(?i)\\bwhat\\s+anime\\b",
 ]
 adds_tags = [
   "evidence:external_web_needed",
@@ -152,11 +147,8 @@ patterns = [
   "发布",
 ]
 regex = [
-  "current",
-  "latest",
-  "news",
-  "price",
-  "version",
+  "(?i)\\b(?:what(?:'s| is)|which|find|search|look up|check).{0,40}\\b(?:current|latest|news|price|version|release)\\b",
+  "(?i)\\b(?:current|latest)\\s+(?:version|release|news|price)\\s+(?:of|for)\\b",
   "(?:今天|今日).{0,12}(?:天气|新闻|价格|股价|版本|发布|日程|赛程|赛事|比赛)",
   "(?:天气|新闻|价格|股价|版本|发布|日程|赛程|赛事|比赛).{0,12}(?:今天|今日)",
   "today.{0,24}(?:weather|news|price|version|release|schedule|fixture|match|game|sports)",

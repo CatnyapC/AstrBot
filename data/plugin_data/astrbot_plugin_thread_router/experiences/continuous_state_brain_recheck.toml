@@ -1,0 +1,51 @@
+[group]
+id = "continuous_state_brain_recheck"
+enabled = true
+
+[[lexical]]
+cue = "continuous_state_brain_recheck"
+enabled = true
+patterns = [
+  "笨",
+  "笨笨",
+  "再想想",
+  "重新看看",
+  "认真看看",
+  "理解错了",
+  "看错了",
+  "答错了",
+]
+regex = [
+  "(狐米)?笨笨?",
+  "(理解|看|答)错了?",
+  "再(认真|好好|仔细)?想想",
+  "重新看(看)?",
+  "认真看(看)?",
+  "(原图|这张图|这图|图里|图片|截图|照片|画面).{0,24}(豆包|gpt|kimi|deepseek|ai|回答|答案|说法).{0,24}(正确吗|对吗|答得对|说得对|靠谱吗)",
+]
+adds_tags = [
+  "intent:continuous_state_brain_recheck",
+  "intent:visual_answer_audit",
+  "capability:continuous_state_brain",
+]
+
+[[capsule]]
+id = "managed:continuous_state_brain_recheck"
+enabled = true
+summary = "Wait for the continuous state brain when Foxmi is corrected or asked to re-check context"
+cue = "continuous_state_brain_recheck"
+route_hint = "continuous_state_brain_wait"
+tool_hints = ["continuous_state_brain_wait"]
+tool_steps = [
+  { tool_name = "continuous_state_brain_wait", args = { text = "$current_prompt", archive_id = "$current_archive_key" } },
+]
+task_class = "continuous_state_brain_wait"
+policy_action = "main_reply"
+confidence = 0.96
+context_tags = [
+  "intent:continuous_state_brain_recheck",
+  "intent:visual_answer_audit",
+  "capability:continuous_state_brain",
+]
+negative_tags = []
+plain_reply_hint = "先参考 continuous_state_brain_wait 的最新理解，再回应当前消息；如果等待超时，也要承认不确定。"
