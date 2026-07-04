@@ -27,7 +27,7 @@ tool_hints = [
 tool_steps = [
   { tool_name = "router_visual_media_grounding_query", args = { query = "$current_prompt", context_text = "$context_text", images = [], force_refresh = true } },
 ]
-tasklet_tools_args_hint = "For router_visual_media_grounding_query, fill images with every picture the current user request needs Foxmi to inspect. Prefer explicit current-message images and quoted/replied images. Use current image markers from main_reply_context: media_key=\"CUR\" means all current-message images; media_key=\"CUR#n\" means the nth current-message image. Do not put numeric message/archive ids in media_key; use archive_id for archive refs. Include multiple images only when the user asks to compare or context clearly needs more than one; do not add unrelated recent images."
+tasklet_tools_args_hint = "For router_visual_media_grounding_query, fill images only as images=[{archive_id=\"messages:<id>\"}]. Use archive_id from current/quoted/replied markers in main_reply_context. Include multiple archive_id items only when the user asks to compare or context clearly needs more than one; do not add unrelated recent images."
 task_class = "media_grounding"
 policy_action = "system3"
 confidence = 0.90
