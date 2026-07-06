@@ -648,6 +648,7 @@ class Node(BaseMessageComponent):
             "data": {
                 "user_id": str(self.uin),
                 "nickname": self.name,
+                "time": int(self.time or 0),
                 "content": data_content,
             },
         }

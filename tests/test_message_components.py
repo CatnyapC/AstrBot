@@ -19,8 +19,18 @@ async def test_node_to_dict_keeps_image_file_payload():
     assert payload["type"] == "node"
     assert payload["data"]["user_id"] == "10000"
     assert payload["data"]["nickname"] == "AstrBot"
+    assert payload["data"]["time"] == 0
     assert payload["data"]["content"][0]["type"] == "image"
     assert payload["data"]["content"][0]["data"]["file"] == "file:///tmp/test-image.png"
+
+
+@pytest.mark.asyncio
+async def test_node_to_dict_keeps_time_payload():
+    node = Node(uin="10000", name="AstrBot", time=1234567890, content=[])
+
+    payload = await node.to_dict()
+
+    assert payload["data"]["time"] == 1234567890
 
 
 @pytest.mark.asyncio
