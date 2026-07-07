@@ -1,0 +1,80 @@
+[group]
+id = "image_artist_lookup"
+enabled = true
+
+[[lexical]]
+cue = "image_artist_lookup"
+enabled = true
+patterns = [
+  "画师",
+  "作者",
+  "主页链接",
+  "推特链接",
+  "X链接",
+  "水印",
+  "签名",
+]
+regex = [
+  "(找|查|搜|识别|看看).{0,80}(画师|作者|主页|推特|Twitter|X|水印|签名)",
+  "(画师|作者|主页|推特|Twitter|X|水印|签名).{0,80}(找|查|搜|识别|链接|主页)",
+]
+adds_tags = [
+  "capability:image_artist_lookup",
+  "capability:codex_browser_task",
+  "capability:browser_execution",
+  "intent:web_interaction_task",
+  "intent:image_author_lookup",
+]
+
+[[capsule]]
+id = "managed:image_artist_lookup"
+enabled = true
+summary = "Use Codex worker to identify an image artist/source profile from watermark, signature, and visual style"
+answer_contract = """
+Use the worker outbox result as evidence.
+- Inspect attached/local images directly; captions and OCR are only hints.
+- Treat watermark/signature text as fuzzy: read carefully, then generate several handle/query candidates by removing separators, trying adjacent words together, and preserving likely artist marks.
+- Search candidates with Twitter/X CLI or web search before Browser when possible.
+- Judge candidates by profile signals: follower count, media/post count, similar art themes/style, furry/NSFW/bio fit, and whether recent media resembles the target.
+- Prefer a verified profile URL over a single weak search hit. If confidence is low, return candidates with reasons instead of pretending certainty.
+- If the user asks for a screenshot, save and attach the profile/source screenshot through worker rich outbox media.
+"""
+cue = "image_artist_lookup"
+route_hint = "codex_app_server"
+thinking_level = "pro"
+tool_hints = [
+  "continuous_brain_worker_task",
+]
+task_class = "codex_browser_task"
+policy_action = "fast_agentic"
+confidence = 0.98
+context_tags = [
+  "capability:image_artist_lookup",
+  "capability:codex_browser_task",
+  "intent:image_author_lookup",
+  "intent:web_interaction_task",
+]
+required_tags = [
+  "capability:image_artist_lookup",
+]
+negative_tags = [
+  "entity:bilibili",
+  "capability:bilibili_video_lookup",
+  "entity:github",
+  "capability:github_repository_lookup",
+]
+tasklet_tools_args_hint = """
+For image artist/source lookup, preserve this goal in the worker task:
+- inspect every attached image and quote-chain image;
+- transcribe possible watermark/signature text;
+- generate multiple candidate handles/queries, including joined forms such as soju+socks -> sojusocks;
+- verify candidates by follower count, media/post count, bio, art theme/style, furry/NSFW fit, and similar recent media;
+- return a profile/source URL only when evidence is strong; otherwise return ranked candidates and uncertainty.
+"""
+
+[[capsule.tool_steps]]
+tool_name = "continuous_brain_worker_task"
+
+[capsule.tool_steps.args]
+task_kind = "codex_browser_task"
+timeout_sec = 900
