@@ -10,7 +10,9 @@ patterns = [
   "外部来源",
   "外部工具",
   "外部",
+  "查查",
   "查一下",
+  "查下",
   "再查",
   "查外部",
   "搜索",
@@ -46,6 +48,9 @@ patterns = [
   "价格",
   "版本",
   "发布",
+  "什么时候更新",
+  "啥时候更新",
+  "何时更新",
 ]
 regex = [
   "(?i)\\bhow\\s+to\\b",
@@ -56,6 +61,7 @@ regex = [
   "(?i)\\b(?:current|latest)\\s+(?:version|release|news|price)\\s+(?:of|for)\\b",
   "(?:今天|今日).{0,12}(?:天气|新闻|价格|股价|版本|发布|日程|赛程|赛事|比赛)",
   "(?:天气|新闻|价格|股价|版本|发布|日程|赛程|赛事|比赛).{0,12}(?:今天|今日)",
+  "(?:什么|啥|哪天|何时|什么时候|啥时候).{0,12}更新",
   "today.{0,24}(?:weather|news|price|version|release|schedule|fixture|match|game|sports)",
   "(?:weather|news|price|version|release|schedule|fixture|match|game|sports).{0,24}today",
   "(?:外部工具|外部).{0,20}(?:搜|查)",
@@ -145,12 +151,16 @@ patterns = [
   "价格",
   "版本",
   "发布",
+  "什么时候更新",
+  "啥时候更新",
+  "何时更新",
 ]
 regex = [
   "(?i)\\b(?:what(?:'s| is)|which|find|search|look up|check).{0,40}\\b(?:current|latest|news|price|version|release)\\b",
   "(?i)\\b(?:current|latest)\\s+(?:version|release|news|price)\\s+(?:of|for)\\b",
   "(?:今天|今日).{0,12}(?:天气|新闻|价格|股价|版本|发布|日程|赛程|赛事|比赛)",
   "(?:天气|新闻|价格|股价|版本|发布|日程|赛程|赛事|比赛).{0,12}(?:今天|今日)",
+  "(?:什么|啥|哪天|何时|什么时候|啥时候).{0,12}更新",
   "today.{0,24}(?:weather|news|price|version|release|schedule|fixture|match|game|sports)",
   "(?:weather|news|price|version|release|schedule|fixture|match|game|sports).{0,24}today",
 ]
@@ -168,7 +178,6 @@ patterns = [
 ]
 regex = []
 adds_tags = [
-  "capability:mediawiki_public_lookup",
   "source:mediawiki_scavprototype",
   "topic:game_guide",
 ]
@@ -180,8 +189,7 @@ summary = "Public MediaWiki lookup for Scav Prototype / Casualties: Unknown game
 cue = "mediawiki_public_source"
 route_hint = "external_knowledge"
 tool_hints = [
-  "bailian_external_knowledge",
-  "mediawiki_public_lookup",
+  "continuous_brain_worker_task",
 ]
 task_class = "external_knowledge_lookup"
 policy_action = "system3"
@@ -189,17 +197,16 @@ reply_length_policy = "relaxed"
 confidence = 0.92
 context_tags = [
   "capability:external_lookup",
-  "capability:mediawiki_public_lookup",
   "capability:information_retrieval",
   "topic:game_guide",
   "source:mediawiki_scavprototype",
 ]
 required_tags = [
   "evidence:external_web_needed",
-  "capability:mediawiki_public_lookup",
+  "source:mediawiki_scavprototype",
 ]
 optional_tags = [
-  "capability:mediawiki_public_lookup",
+  "source:mediawiki_scavprototype",
   "capability:information_retrieval",
   "intent:how_to_make",
   "intent:public_how_to_lookup",
@@ -207,30 +214,21 @@ optional_tags = [
 ]
 negative_tags = []
 provider_preset = "no_site_limit"
-fallback_when = [
-  "unverified",
-  "insufficient",
-  "failed",
-  "timeout",
-  "source_count_zero",
-  "verification_unverified",
-]
-fallback_steps = [
-  { tool = "mediawiki_public_lookup", when = ["unverified", "insufficient", "failed", "timeout", "source_count_zero", "verification_unverified"], args = { api_urls = ["https://scavprototype.wiki.gg/api.php"], limit = 3 } },
-  { tool = "knowledge_reference", when = ["unverified", "insufficient", "failed", "timeout", "source_count_zero", "verification_unverified"], args = { reason = "external_knowledge_fallback" } },
+tool_steps = [
+  { tool_name = "continuous_brain_worker_task", args = { task_kind = "external_fact_lookup", timeout_sec = 900 } },
 ]
 
 [[capsule]]
-id = "managed:external_reference_lookup_public_source"
+id = "managed:external_worker_lookup_public_source"
 enabled = true
-summary = "External/public source lookup; managed tool chooses KR for referenced media and Bailian for text/web lookup"
+summary = "External/public source lookup through continuous worker"
 cue = "external_source"
 route_hint = "external_knowledge"
 tool_hints = [
-  "external_reference_lookup",
+  "continuous_brain_worker_task",
 ]
 tool_steps = [
-  { tool_name = "external_reference_lookup", args = { query = "$current_prompt", context_text = "$context_text", provider_preset = "no_site_limit" } },
+  { tool_name = "continuous_brain_worker_task", args = { task_kind = "external_fact_lookup", timeout_sec = 900 } },
 ]
 task_class = "external_knowledge_lookup"
 policy_action = "system3"
