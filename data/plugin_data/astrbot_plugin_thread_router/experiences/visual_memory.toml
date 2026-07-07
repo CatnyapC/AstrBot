@@ -50,19 +50,6 @@ required_any_tags = [
 negative_tags = []
 
 [[capsule]]
-id = "managed:visual_memory_send_alternate_media"
-enabled = false
-summary = "Send another existing visual memory media item; exclude recent successful sends"
-cue = "media_send_alternate"
-route_hint = "visual_memory_send"
-tool_hints = []
-tool_steps = []
-task_class = "visual_memory_send"
-policy_action = "fast_agentic"
-confidence = 0.92
-negative_tags = []
-
-[[capsule]]
 id = "managed:visual_memory_send_media"
 enabled = true
 summary = "Send/forward existing visual memory media"
@@ -179,31 +166,6 @@ adds_tags = [
   "media:image",
   "capability:visual_memory_query",
   "capability:visual_memory_send",
-]
-
-[[lexical]]
-cue = "media_send_alternate"
-enabled = true
-patterns = [
-  "再发一张",
-  "再发一个",
-  "再来一张",
-  "再来一个",
-  "换一张",
-  "换一个",
-  "另一张",
-  "另一个",
-]
-regex = [
-  "(?:别的|不同).{0,12}(?:图|图片|照片|表情|头像|图标)",
-  "(?:图|图片|照片|表情|头像|图标).{0,12}(?:别的|不同|另一张|另一个)",
-]
-adds_tags = [
-  "intent:image_question",
-  "media:image",
-  "capability:visual_memory_query",
-  "capability:visual_memory_send",
-  "intent:image_send_alternate",
 ]
 
 [[lexical]]
