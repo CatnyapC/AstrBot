@@ -1,0 +1,71 @@
+[group]
+id = "parser_whitelist_admin_command"
+enabled = true
+
+[[lexical]]
+cue = "parser_whitelist_admin"
+enabled = true
+patterns = [
+  "解析白名单",
+  "解析器白名单",
+  "解析链接白名单",
+  "链接解析白名单",
+  "parser白名单",
+  "parser 白名单",
+  "parser whitelist",
+  "parserwl",
+  "允许发推特链接",
+  "允许发twitter链接",
+  "允许发youtube链接",
+  "推特链接被解析",
+  "youtube链接被解析",
+]
+regex = [
+  "(parser\\s*wl|parser\\s*白名单|解析链接?白名单)",
+  "(允许|放行|添加|加入|移除|删除|清空|查看).{0,20}(推特|twitter|youtube|yt|解析|白名单)",
+]
+adds_tags = [
+  "intent:request_action",
+  "capability:parser_whitelist_admin",
+  "capability:parser_command_operation",
+]
+
+[[capsule]]
+id = "managed:parser_whitelist_admin_command"
+enabled = true
+summary = "Parser whitelist management through continuous parser command worker"
+answer_contract = """
+Use the parser command worker to convert natural parser whitelist requests into a safe structured action.
+- Supported operations: list, add, remove, clear.
+- Do not expose raw /parserwl command text to the main LLM.
+- Router validates group admin/owner permission, resolves target aliases, formats the safe command, sends it, archives it, then waits for parser/FoxMiao confirmation.
+- If status=waiting_external, only say the request was sent and Foxmi is waiting for parser/FoxMiao confirmation; do not claim the whitelist changed.
+- If status=needs_user/not_found, ask for the exact target user.
+"""
+cue = "parser_whitelist_admin"
+route_hint = "parser_whitelist_admin"
+tool_hints = ["parser_whitelist_admin_command"]
+tool_steps = [
+  { tool_name = "parser_whitelist_admin_command", args = { text = "$current_prompt" } },
+]
+task_class = "parser_whitelist_admin_command"
+policy_action = "fast_agentic"
+confidence = 0.93
+context_tags = [
+  "intent:request_action",
+  "capability:parser_whitelist_admin",
+  "capability:parser_command_operation",
+]
+negative_tags = []
+
+[[capsule]]
+id = "seed:parser_whitelist_admin_command"
+enabled = true
+summary = "Parser whitelist management"
+cue = "parser_whitelist_admin"
+route_hint = "parser_whitelist_admin"
+tool_hints = []
+task_class = "parser_whitelist_admin_command"
+policy_action = "fast_agentic"
+confidence = 0.90
+negative_tags = []
