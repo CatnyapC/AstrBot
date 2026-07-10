@@ -51,6 +51,11 @@ from ...follow_up import (
 )
 
 
+def _agent_session_lock_key(event: AstrMessageEvent) -> str:
+    override = str(event.get_extra("_astrbot_session_lock_key", "") or "").strip()
+    return override or event.unified_msg_origin
+
+
 class InternalAgentSubStage(Stage):
     async def initialize(self, ctx: PipelineContext) -> None:
         self.ctx = ctx
@@ -206,19 +211,22 @@ class InternalAgentSubStage(Stage):
                 has_provider_request
                 or event.get_extra("_router_timeout_dispatched", False)
             )
+            session_lock_key = _agent_session_lock_key(event)
             lock_wait_started = time.perf_counter()
             if trace_provider_request:
                 logger.info(
-                    "InternalAgentSubStage waiting session lock: session=%s router_timeout=%s provider_request=%s",
+                    "InternalAgentSubStage waiting session lock: session=%s lock_key=%s router_timeout=%s provider_request=%s",
                     event.unified_msg_origin,
+                    session_lock_key,
                     bool(event.get_extra("_router_timeout_dispatched", False)),
                     has_provider_request,
                 )
-            async with session_lock_manager.acquire_lock(event.unified_msg_origin):
+            async with session_lock_manager.acquire_lock(session_lock_key):
                 if trace_provider_request:
                     logger.info(
-                        "InternalAgentSubStage acquired session lock: session=%s wait=%.3fs",
+                        "InternalAgentSubStage acquired session lock: session=%s lock_key=%s wait=%.3fs",
                         event.unified_msg_origin,
+                        session_lock_key,
                         time.perf_counter() - lock_wait_started,
                     )
                 logger.debug("acquired session lock for llm request")
@@ -471,6 +479,8 @@ class InternalAgentSubStage(Stage):
         user_aborted: bool = False,
     ) -> None:
         if not req or not req.conversation:
+            return
+        if bool(event.get_extra("_astrbot_skip_conversation_save", False)):
             return
 
         if not llm_response and not user_aborted:
