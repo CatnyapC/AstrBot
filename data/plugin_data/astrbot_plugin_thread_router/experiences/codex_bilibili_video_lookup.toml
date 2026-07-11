@@ -47,25 +47,12 @@ adds_tags = [
 id = "managed:codex_bilibili_video_lookup"
 enabled = true
 summary = "Use Codex browser to find and verify a Bilibili video link from screenshot/current context"
-answer_contract = """
-Use Codex Bilibili lookup result as side-effect context.
-- The browser worker must inspect attached screenshot images when present; OCR/caption text is only a hint.
-- The worker must run this as a fast lookup: inspect the image first, then try Agent Reach's Bilibili CLI (`bili search "<exact title> <uploader>" --type video -n 5`) before opening Browser.
-- If status=ok, router_send_text_message posts video_url directly; main reply must not repeat or prepend the link.
-- Do not say the browser is still searching after this tool succeeds.
-- If status=failed or needs_user, do not invent a BV link.
-"""
 cue = "codex_bilibili_video_lookup"
-route_hint = "codex_bilibili_lookup"
+route_hint = "codex_app_server"
 tool_hints = [
-  "codex_bilibili_video_lookup",
-  "router_send_text_message",
+  "continuous_brain_worker_task",
 ]
-tool_steps = [
-  { tool_name = "codex_bilibili_video_lookup", args = { allow_submit = false, timeout_sec = 900, port = 4510 } },
-  { tool_name = "router_send_text_message", args = { text = "$codex_bilibili_video_lookup.result_summary.video_url", source_status = "$codex_bilibili_video_lookup.status" } },
-]
-task_class = "codex_bilibili_video_lookup"
+task_class = "codex_browser_task"
 policy_action = "fast_agentic"
 confidence = 0.96
 context_tags = [
@@ -78,3 +65,20 @@ required_tags = [
   "capability:codex_bilibili_video_lookup",
 ]
 negative_tags = []
+
+[[capsule.tool_steps]]
+tool_name = "continuous_brain_worker_task"
+
+[capsule.tool_steps.args]
+task_kind = "codex_browser_task"
+timeout_sec = 900
+worker_prompt = """
+这是 Bilibili 视频定位任务。直接执行，不读取额外 SKILL。
+- 检查 latest_context 中当前、引用及附件图片；从图片本身提取标题、UP 主、BV 号和可辨识关键词，caption/OCR 只作提示。
+- Agent Reach 只允许使用 Bilibili CLI：`bili search "<从图片提取的标题、UP主或关键词>" --type video -n 5`。先用精确文字搜索，必要时再用 Browser 核验候选页面。
+- 必须按标题、UP 主、BV 号或画面证据核验，不得把仅有相似短标题的候选当成结果。
+- 唯一产出是运行 `uv run python worker_tools/write_worker_outbox.py` 写 `worker_rich_outbox`，禁止直接发消息或写进度。
+- 找到并核验时用 `--status ok`，`--text` 简短写标题、UP主、BV号、URL和核验证据，并用 `--ref-url` 写最终 URL。
+- 缺少可搜索文字、图片不可读或候选歧义需要用户补充时，用 `--status needs_user`，明确还需要什么。
+- 搜索或核验确定无法完成时用 `--status failed` 并写明原因。此任务不得使用 `waiting_external` 或 `not_found`。
+"""
