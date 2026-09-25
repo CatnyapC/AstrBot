@@ -39,11 +39,11 @@ tool_steps = [
 task_class = "archive_evidence_lookup"
 policy_action = "fast_agentic"
 confidence = 0.82
-negative_tags = []
+negative_tags = ["intent:recalled_archive_lookup"]
 
 [[capsule]]
 id = "managed:thread_archive_provenance_lookup"
-enabled = true
+enabled = false
 summary = "Who said / earliest local archive provenance with quote evidence"
 cue = "claim_query"
 route_hint = "timeline_evidence"
@@ -64,6 +64,7 @@ context_tags = [
 ]
 negative_tags = [
   "evidence:external_web_needed",
+  "intent:recalled_archive_lookup",
 ]
 
 [[capsule]]
@@ -81,4 +82,4 @@ tool_steps = [
 task_class = "claim_lookup"
 policy_action = "fast_agentic"
 confidence = 0.78
-negative_tags = []
+negative_tags = ["intent:recalled_archive_lookup"]
