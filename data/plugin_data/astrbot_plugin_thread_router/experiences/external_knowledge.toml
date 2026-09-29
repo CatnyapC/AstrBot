@@ -253,8 +253,10 @@ context_tags = [
   "capability:browser_search",
   "intent:identify_video_origin",
 ]
-required_tags = [
+required_any_tags = [
   "evidence:external_web_needed",
+  "capability:external_lookup",
+  "capability:web_search",
 ]
 optional_tags = [
   "capability:external_lookup",
