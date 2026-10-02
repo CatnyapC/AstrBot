@@ -30,9 +30,9 @@ tool_hints = [
   "recalled_archive_lookup",
 ]
 tool_steps = [
-  { tool_name = "recalled_archive_lookup", args = { limit = 3 } },
+  { tool_name = "recalled_archive_lookup", args = { limit = 1 } },
 ]
-tasklet_tools_args_hint = "recalled_archive_lookup 只传 operator_id、speaker_id、limit。limit 默认 3，最多 8，表示按时间倒序返回最近 N 条 48 小时内被撤回消息。A撤回/由A撤回/最近A撤回的消息 -> operator_id=A。B的发言记录/B被撤回/小B上次被撤回 -> speaker_id=B。A撤回的一条B发言/A自己发自己撤回 -> operator_id=A 且 speaker_id=B/A。"
+tasklet_tools_args_hint = "recalled_archive_lookup 只传 operator_id、speaker_id、limit。limit 默认 1，最多 8，表示按时间倒序返回最近 N 条 48 小时内被撤回消息。只有用户明示或暗示需要多条（如撤回了哪些、最近N条、最近几条）才传大于 1；明确数量按要求填写，未指定数量的多条请求取 3。仅问撤回了什么、刚才撤回的消息或偷偷告诉我，均取 1。A撤回/由A撤回/最近A撤回的消息 -> operator_id=A。B的发言记录/B被撤回/小B上次被撤回 -> speaker_id=B。A撤回的一条B发言/A自己发自己撤回 -> operator_id=A 且 speaker_id=B/A。"
 answer_contract = "If status=sent, only confirm the merged recalled-message card was sent; do not repeat recalled message text. If status=ok, use recalled_archive_lookup.tool_context as source of truth and answer with the matched recalled message text. If not_found, say no matching recalled archive row was found."
 task_class = "recalled_archive_lookup"
 policy_action = "deterministic"
