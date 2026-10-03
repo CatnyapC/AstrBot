@@ -9,6 +9,7 @@ Use this folder for feature-level documentation.
 - `gpt-sovits-tts.md`: local GPT-SoVITS `api_v2.py` sidecar setup for AstrBot TTS.
 - `llama-cpp-thinking-extra-body.md`: llama.cpp OpenAI-compatible providers map top-level `enable_thinking` into `chat_template_kwargs`.
 - `media-component-url-fallback.md`: incoming media components whose `file` only carries a platform filename now fall back to `url` for local download.
+- `message-send-receipts.md`: acknowledged send parts, partial failures, and non-streaming response receipt collection.
 - `provider-request-pipeline-diagnostics.md`: info-level checkpoints for plugin-yielded LLM `ProviderRequest` handoff and hook dispatch.
 - `provider-runtime-chat-kwargs.md`: provider payload boundary for runner-only chat kwargs such as abort signals.
 - `thread-archive-media-caption-providers.md`: thread archive caption provider selection for image, video, and record media.

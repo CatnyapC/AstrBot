@@ -146,6 +146,15 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
             session_id (str | None, optional): 会话 ID（群号或 QQ 号
 
         """
+        message_chain.sent_receipts.clear()
+        sent_message_ids: list[str] = []
+        setattr(message_chain, "_onebot_sent_message_ids", sent_message_ids)
+
+        def record_result(result, components):
+            ids = cls._extract_sent_message_ids(result)
+            message_chain.record_sent(ids, components)
+            sent_message_ids.extend(ids)
+
         # 转发消息、文件消息不能和普通消息混在一起发送
         send_one_by_one = any(
             isinstance(seg, Node | Nodes | File) for seg in message_chain.chain
@@ -157,8 +166,8 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
             send_result = await cls._dispatch_send(
                 bot, event, is_group, session_id, ret
             )
-            return cls._extract_sent_message_ids(send_result)
-        sent_message_ids: list[str] = []
+            record_result(send_result, message_chain.chain)
+            return sent_message_ids
         for seg in message_chain.chain:
             if isinstance(seg, Node | Nodes):
                 # 合并转发消息
@@ -178,13 +187,13 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
                     send_result = await bot.call_action(
                         "send_private_forward_msg", **payload
                     )
-                sent_message_ids.extend(cls._extract_sent_message_ids(send_result))
+                record_result(send_result, [seg])
             elif isinstance(seg, File):
                 d = await cls._from_segment_to_dict(seg)
                 send_result = await cls._dispatch_send(
                     bot, event, is_group, session_id, [d]
                 )
-                sent_message_ids.extend(cls._extract_sent_message_ids(send_result))
+                record_result(send_result, [seg])
             else:
                 messages = await cls._parse_onebot_json(MessageChain([seg]))
                 if not messages:
@@ -192,7 +201,7 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
                 send_result = await cls._dispatch_send(
                     bot, event, is_group, session_id, messages
                 )
-                sent_message_ids.extend(cls._extract_sent_message_ids(send_result))
+                record_result(send_result, [seg])
                 await asyncio.sleep(0.5)
         return sent_message_ids
 
@@ -203,13 +212,20 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
         is_group = bool(self.get_group_id())
         session_id = self.get_group_id() if is_group else self.get_sender_id()
 
-        sent_message_ids = await self.send_message(
-            bot=self.bot,
-            message_chain=message,
-            event=event,  # 不强制要求一定是 Event
-            is_group=is_group,
-            session_id=session_id,
-        )
+        try:
+            sent_message_ids = await self.send_message(
+                bot=self.bot,
+                message_chain=message,
+                event=event,
+                is_group=is_group,
+                session_id=session_id,
+            )
+        finally:
+            self.set_extra(
+                "_sent_message_receipts",
+                list(self.get_extra("_sent_message_receipts", []) or [])
+                + list(message.sent_receipts),
+            )
         if sent_message_ids:
             self.set_extra("_onebot_sent_message_ids", sent_message_ids)
             setattr(message, "_onebot_sent_message_ids", sent_message_ids)

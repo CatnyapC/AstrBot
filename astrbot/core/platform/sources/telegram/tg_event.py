@@ -120,6 +120,7 @@ class TelegramPlatformEvent(AstrMessageEvent):
         client: ExtBot,
         text: str,
         payload: dict[str, Any],
+        receipt_chain: MessageChain | None = None,
     ) -> list[Any]:
         """按 Telegram 限制切分文本后逐段发送。"""
         sent_messages: list[Any] = []
@@ -139,6 +140,12 @@ class TelegramPlatformEvent(AstrMessageEvent):
                 )
                 sent = await client.send_message(text=chunk, **cast(Any, payload))
             sent_messages.append(sent)
+            if receipt_chain is not None:
+                receipt_chain.record_sent(
+                    _telegram_message_ids([sent]),
+                    [part for part in receipt_chain.chain if isinstance(part, Reply)]
+                    + [Plain(chunk)],
+                )
         return sent_messages
 
     @classmethod
@@ -286,6 +293,7 @@ class TelegramPlatformEvent(AstrMessageEvent):
         user_name: str,
     ) -> list[Any]:
         image_path = None
+        message.sent_receipts.clear()
         sent_messages: list[Any] = []
 
         has_reply = False
@@ -322,7 +330,7 @@ class TelegramPlatformEvent(AstrMessageEvent):
                     i.text = f"@{at_user_id} {i.text}"
                     at_flag = True
                 sent_messages.extend(
-                    await cls._send_text_chunks(client, i.text, payload)
+                    await cls._send_text_chunks(client, i.text, payload, message)
                 )
             elif isinstance(i, Image):
                 image_path = await i.convert_to_file_path()
@@ -363,16 +371,28 @@ class TelegramPlatformEvent(AstrMessageEvent):
                         **cast(Any, payload),
                     )
                 )
+            if isinstance(i, (Image, File, Record, Video)):
+                message.record_sent(
+                    _telegram_message_ids([sent_messages[-1]]),
+                    [part for part in message.chain if isinstance(part, Reply)] + [i],
+                )
         return sent_messages
 
     async def send(self, message: MessageChain) -> None:
-        if self.get_message_type() == MessageType.GROUP_MESSAGE:
-            sent_messages = await self.send_with_client(
-                self.client, message, self.message_obj.group_id
-            )
-        else:
-            sent_messages = await self.send_with_client(
-                self.client, message, self.get_sender_id()
+        try:
+            if self.get_message_type() == MessageType.GROUP_MESSAGE:
+                sent_messages = await self.send_with_client(
+                    self.client, message, self.message_obj.group_id
+                )
+            else:
+                sent_messages = await self.send_with_client(
+                    self.client, message, self.get_sender_id()
+                )
+        finally:
+            self.set_extra(
+                "_sent_message_receipts",
+                list(self.get_extra("_sent_message_receipts", []) or [])
+                + list(message.sent_receipts),
             )
         self.set_extra(
             "_telegram_sent_message_ids", _telegram_message_ids(sent_messages)
