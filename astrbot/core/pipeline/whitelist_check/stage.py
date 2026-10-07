@@ -9,16 +9,16 @@ from ..stage import Stage, register_stage
 
 
 def is_event_whitelisted(event: AstrMessageEvent, settings: dict) -> bool:
-    """Use the live session allowlist; an empty DM allowlist denies access."""
-    if not settings.get("enable_id_white_list", True):
-        return True
+    """Keep DM permissions independent of the group whitelist and its switch."""
     if event.get_platform_name() == "webchat":
         return True
     private = event.get_message_type() == MessageType.FRIEND_MESSAGE
+    if not private and not settings.get("enable_id_white_list", True):
+        return True
     bypass = "wl_ignore_admin_on_friend" if private else "wl_ignore_admin_on_group"
     if event.is_admin() and settings.get(bypass, False):
         return True
-    entries = settings.get("id_whitelist", [])
+    entries = settings.get("dm_whitelist" if private else "id_whitelist", [])
     if not isinstance(entries, list):
         return False
     whitelist = {str(value).strip() for value in entries if str(value).strip()}

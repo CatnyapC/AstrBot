@@ -1,16 +1,21 @@
 # DM Session Whitelist
 
-When `platform_settings.enable_id_white_list=true`, private messages require
-their full `platform-instance:FriendMessage:account-id` in the effective
-configuration's `id_whitelist`. An empty list denies private messages.
-Bare account IDs and entries belonging to another platform instance do not
-authorize a DM. Group behavior is unchanged: an empty list permits groups,
-and group IDs or full group session IDs can authorize groups.
+Private messages always require their full
+`platform-instance:FriendMessage:account-id` in the effective configuration's
+`platform_settings.dm_whitelist`. An empty or missing list denies ordinary
+private messages. Bare account IDs, another platform instance's entries, and
+entries in the group whitelist do not authorize a DM.
+
+Group behavior remains controlled by `enable_id_white_list` and `id_whitelist`:
+when enabled, an empty group list permits groups, and group IDs or full group
+session IDs can authorize groups. Disabling that switch permits groups without
+disabling the independent DM gate. DM add/remove operations change neither the
+group switch nor its list, including when the last DM entry is removed.
 
 Existing exemptions remain explicit: WebChat is exempt, administrators can
-bypass according to `wl_ignore_admin_on_friend` / `wl_ignore_admin_on_group`,
-and disabling `enable_id_white_list` disables this gate. Keep the gate enabled
-for a restricted DM deployment. Removing an administrator from the allowlist
+bypass according to `wl_ignore_admin_on_friend` / `wl_ignore_admin_on_group`.
+There is no separate DM gate switch: ordinary DM access requires explicit
+authorization. Removing an administrator from the allowlist
 does not revoke an enabled administrator exemption.
 
 The whitelist stage reads the current configuration for every event rather
@@ -26,7 +31,9 @@ Revocation suppresses pending pipeline replies; already sent content cannot
 be withdrawn. Direct platform sends that bypass the pipeline are outside
 this gate and must check permission themselves.
 
-Foxmi's optional `/dmwl` command and V2 managed plain tool maintain this
-existing list. They do not introduce another access database. See the Thread
+Foxmi's optional `/dmwl` command and V2 managed plain tool maintain only
+`dm_whitelist`. No group whitelist setup is required. The WebUI exposes the
+separate group and DM lists under Configuration -> Platform -> Whitelist.
+They do not introduce another access database. See the Thread
 Router plugin's `docs/intent_tools/dm_whitelist_admin_managed_tool.md` for
 administrator usage and the distinction between DM access and memory access.

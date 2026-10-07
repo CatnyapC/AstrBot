@@ -815,12 +815,16 @@
       "description": "Whitelist",
       "platform_settings": {
         "enable_id_white_list": {
-          "description": "Enable Whitelist",
-          "hint": "When enabled, DMs require an explicit FriendMessage session entry. An empty list denies ordinary DMs and leaves groups unrestricted. Administrator exemptions follow their settings."
+          "description": "Enable Group Whitelist",
+          "hint": "Controls group access only. The independent DM whitelist is always checked."
         },
         "id_whitelist": {
-          "description": "Whitelist ID List",
-          "hint": "Use /sid to get session IDs. For DMs, enter the full FriendMessage session ID. An empty list leaves groups unrestricted but denies DMs without an administrator exemption."
+          "description": "Group Whitelist ID List",
+          "hint": "Use /sid for a group session ID, or enter a group ID. An empty list leaves groups unrestricted. DM access uses its own list."
+        },
+        "dm_whitelist": {
+          "description": "DM Whitelist ID List",
+          "hint": "Enter full FriendMessage session IDs. An empty list denies ordinary DMs; administrator exemptions follow their setting. Independent of group whitelist settings; manageable through /dmwl."
         },
         "id_whitelist_log": {
           "description": "Output Logs",

@@ -64,6 +64,7 @@ DEFAULT_CONFIG = {
         "forward_threshold": 1500,
         "enable_id_white_list": True,
         "id_whitelist": [],
+        "dm_whitelist": [],
         "id_whitelist_log": True,
         "wl_ignore_admin_on_group": True,
         "wl_ignore_admin_on_friend": True,
@@ -1071,7 +1072,12 @@ CONFIG_METADATA_2 = {
                     "id_whitelist": {
                         "type": "list",
                         "items": {"type": "string"},
-                        "hint": "启用白名单检查时，群聊列表为空不限制；私聊只放行明确列出的 FriendMessage 会话，空列表拒绝私聊。管理员豁免按配置执行。使用 /sid 获取会话 ID（如 abc:FriendMessage:123）。",
+                        "hint": "仅限制群聊；列表为空不限制群聊。使用 /sid 获取群会话 ID，也可填写群 ID。",
+                    },
+                    "dm_whitelist": {
+                        "type": "list",
+                        "items": {"type": "string"},
+                        "hint": "独立私聊白名单，不受群聊白名单开关影响。填写完整 FriendMessage 会话 ID；空列表拒绝普通私聊，管理员豁免按配置执行。可用 /dmwl 管理。",
                     },
                     "id_whitelist_log": {
                         "type": "bool",
@@ -3928,15 +3934,21 @@ CONFIG_METADATA_3 = {
                 "type": "object",
                 "items": {
                     "platform_settings.enable_id_white_list": {
-                        "description": "启用白名单",
+                        "description": "启用群聊白名单",
                         "type": "bool",
-                        "hint": "启用后，只有在白名单内的会话会被响应。",
+                        "hint": "仅控制群聊白名单检查，不影响独立的私聊白名单。",
                     },
                     "platform_settings.id_whitelist": {
-                        "description": "白名单 ID 列表",
+                        "description": "群聊白名单 ID 列表",
                         "type": "list",
                         "items": {"type": "string"},
-                        "hint": "使用 /sid 获取会话 ID。启用检查时，空列表不限制群聊，但拒绝未获管理员豁免的私聊；私聊请填写完整 FriendMessage 会话 ID。",
+                        "hint": "使用 /sid 获取群会话 ID，也可填写群 ID。空列表不限制群聊；私聊授权请使用独立的私聊白名单。",
+                    },
+                    "platform_settings.dm_whitelist": {
+                        "description": "私聊白名单 ID 列表",
+                        "type": "list",
+                        "items": {"type": "string"},
+                        "hint": "填写完整 FriendMessage 会话 ID。空列表拒绝普通私聊，管理员豁免按配置执行。独立于群聊白名单开关和列表，可用 /dmwl 管理。",
                     },
                     "platform_settings.id_whitelist_log": {
                         "description": "输出日志",
