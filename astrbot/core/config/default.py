@@ -1071,7 +1071,7 @@ CONFIG_METADATA_2 = {
                     "id_whitelist": {
                         "type": "list",
                         "items": {"type": "string"},
-                        "hint": "只处理填写的 ID 发来的消息事件，为空时不启用。可使用 /sid 指令获取在平台上的会话 ID(类似 abc:GroupMessage:123)。管理员可使用 /wl 添加白名单",
+                        "hint": "启用白名单检查时，群聊列表为空不限制；私聊只放行明确列出的 FriendMessage 会话，空列表拒绝私聊。管理员豁免按配置执行。使用 /sid 获取会话 ID（如 abc:FriendMessage:123）。",
                     },
                     "id_whitelist_log": {
                         "type": "bool",
@@ -3936,7 +3936,7 @@ CONFIG_METADATA_3 = {
                         "description": "白名单 ID 列表",
                         "type": "list",
                         "items": {"type": "string"},
-                        "hint": "使用 /sid 获取 ID。当白名单列表为空时，代表不启用白名单（即所有 ID 都在白名单内）。",
+                        "hint": "使用 /sid 获取会话 ID。启用检查时，空列表不限制群聊，但拒绝未获管理员豁免的私聊；私聊请填写完整 FriendMessage 会话 ID。",
                     },
                     "platform_settings.id_whitelist_log": {
                         "description": "输出日志",

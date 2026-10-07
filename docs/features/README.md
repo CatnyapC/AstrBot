@@ -4,6 +4,8 @@ Use this folder for feature-level documentation.
 
 ## Available Docs
 
+- `dm-session-whitelist.md`: strict DM session allowlisting, live configuration reads, atomic persistence and pending-reply revocation.
+
 - `future-task-management.md`: future task / cron feature, execution model, API and WebUI behavior, and current limits.
 - `gemma4-audio-fastapi-service.md`: local macOS FastAPI service for Gemma 4 E4B native audio analysis.
 - `gpt-sovits-tts.md`: local GPT-SoVITS `api_v2.py` sidecar setup for AstrBot TTS.

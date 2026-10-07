@@ -113,7 +113,12 @@ async def test_segmented_reply_collects_all_receipts_and_resets_each_round(
         event = TelegramPlatformEvent("", message, meta, "42", client)
         monkeypatch.setattr(TelegramPlatformEvent, "_send_chat_action", AsyncMock())
     stage = RespondStage()
-    stage.config = {}
+    stage.config = {
+        "platform_settings": {
+            "enable_id_white_list": True,
+            "id_whitelist": [event.unified_msg_origin],
+        }
+    }
     stage.platform_settings = {}
     monkeypatch.setattr(stage, "is_seg_reply_required", lambda event: True)
     monkeypatch.setattr(stage, "_calc_comp_interval", AsyncMock(return_value=0))

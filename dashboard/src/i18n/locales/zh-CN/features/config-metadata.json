@@ -816,11 +816,11 @@
       "platform_settings": {
         "enable_id_white_list": {
           "description": "启用白名单",
-          "hint": "启用后,只有在白名单内的会话会被响应，白名单列表为空时代表不启用白名单（所有 ID 都会被放行）。"
+          "hint": "启用后，私聊需要明确的 FriendMessage 会话授权；空列表拒绝普通私聊，但不限制群聊。管理员豁免按配置执行。"
         },
         "id_whitelist": {
           "description": "白名单 ID 列表",
-          "hint": "使用 /sid 获取 ID。列表为空时表示该白名单不启用（即所有 ID 都在白名单内）。"
+          "hint": "使用 /sid 获取会话 ID。私聊填写完整 FriendMessage 会话 ID。空列表不限制群聊，但拒绝未获管理员豁免的私聊。"
         },
         "id_whitelist_log": {
           "description": "输出日志",

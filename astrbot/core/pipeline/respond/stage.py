@@ -8,11 +8,13 @@ from astrbot.core import logger
 from astrbot.core.message.components import BaseMessageComponent, ComponentType
 from astrbot.core.message.message_event_result import MessageChain, ResultContentType
 from astrbot.core.platform.astr_message_event import AstrMessageEvent
+from astrbot.core.platform.message_type import MessageType
 from astrbot.core.star.star_handler import EventType
 from astrbot.core.utils.path_util import path_Mapping
 
 from ..context import PipelineContext, call_event_hook
 from ..stage import Stage, register_stage
+from ..whitelist_check.stage import is_event_whitelisted
 
 
 @register_stage
@@ -166,12 +168,23 @@ class RespondStage(Stage):
 
         return extracted
 
+    def _dm_send_allowed(self, event: AstrMessageEvent) -> bool:
+        if event.get_message_type() != MessageType.FRIEND_MESSAGE:
+            return True
+        if is_event_whitelisted(event, self.config.get("platform_settings", {})):
+            return True
+        event.clear_result()
+        event.stop_event()
+        return False
+
     async def process(
         self,
         event: AstrMessageEvent,
     ) -> None | AsyncGenerator[None, None]:
         result = event.get_result()
         if result is None:
+            return
+        if not self._dm_send_allowed(event):
             return
         if event.get_extra("_streaming_finished", False):
             # prevent some plugin make result content type to LLM_RESULT after streaming finished, lead to send again
@@ -198,7 +211,16 @@ class RespondStage(Stage):
                 == "realtime_segmenting"
             )
             logger.info(f"应用流式输出({event.get_platform_id()})")
-            await event.send_streaming(result.async_stream, realtime_segmenting)
+
+            async def authorized_stream():
+                async for chunk in result.async_stream:
+                    if not self._dm_send_allowed(event):
+                        raise PermissionError("dm_access_revoked")
+                    yield chunk
+                if not self._dm_send_allowed(event):
+                    raise PermissionError("dm_access_revoked")
+
+            await event.send_streaming(authorized_stream(), realtime_segmenting)
             return
         if len(result.chain) > 0:
             # 检查路径映射
@@ -245,6 +267,8 @@ class RespondStage(Stage):
                 for comp in result.chain:
                     i = await self._calc_comp_interval(comp)
                     await asyncio.sleep(i)
+                    if not self._dm_send_allowed(event):
+                        return
                     try:
                         if comp.type in need_separately:
                             await event.send(result.derive([comp]))
@@ -273,6 +297,8 @@ class RespondStage(Stage):
                 )
                 for comp in sep_comps:
                     chain = result.derive([comp])
+                    if not self._dm_send_allowed(event):
+                        return
                     try:
                         await event.send(chain)
                     except Exception as e:
@@ -282,6 +308,8 @@ class RespondStage(Stage):
                         )
                 chain = result.derive(result.chain)
                 if result.chain and len(result.chain) > 0:
+                    if not self._dm_send_allowed(event):
+                        return
                     try:
                         await event.send(chain)
                     except Exception as e:

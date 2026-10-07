@@ -2,6 +2,8 @@ import enum
 import json
 import logging
 import os
+import tempfile
+from pathlib import Path
 
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from astrbot.core.utils.auth_password import (
@@ -218,10 +220,25 @@ class AstrBotConfig(dict):
 
         如果传入 replace_config，则将配置替换为 replace_config
         """
+        updated = dict(self)
         if replace_config:
-            self.update(replace_config)
-        with open(self.config_path, "w", encoding="utf-8-sig") as f:
-            json.dump(self, f, indent=2, ensure_ascii=False)
+            updated.update(replace_config)
+        content = json.dumps(updated, indent=2, ensure_ascii=False)
+        target = Path(self.config_path)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8-sig", dir=target.parent, delete=False
+            ) as stream:
+                temporary = Path(stream.name)
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            temporary.replace(target)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        self.update(updated)
 
     def __getattr__(self, item):
         try:
