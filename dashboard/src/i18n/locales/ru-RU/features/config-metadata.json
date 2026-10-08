@@ -823,9 +823,9 @@
                     "description": "Белый список ID групп",
                     "hint": "Используйте /sid для ID сессии группы или укажите ID группы. Пустой список не ограничивает группы. Личные сообщения используют отдельный список."
                 },
-                "dm_whitelist": {
-                    "description": "Белый список личных сообщений",
-                    "hint": "Укажите полный ID сессии FriendMessage. Пустой список запрещает обычные личные сообщения; исключения для администраторов задаются отдельно. Не зависит от списка групп; управляется через /dmwl."
+                "dm_tiers": {
+                    "description": "DM tier",
+                    "hint": "FriendMessage session ID → tier 0–3. Missing = tier0. Administrators have no DM exemption."
                 },
                 "id_whitelist_log": {
                     "description": "Выводить логи",
@@ -833,9 +833,6 @@
                 },
                 "wl_ignore_admin_on_group": {
                     "description": "Администраторы в группах обходят белый список"
-                },
-                "wl_ignore_admin_on_friend": {
-                    "description": "Администраторы в ЛС обходят белый список"
                 }
             }
         },

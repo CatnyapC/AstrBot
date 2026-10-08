@@ -64,10 +64,9 @@ DEFAULT_CONFIG = {
         "forward_threshold": 1500,
         "enable_id_white_list": True,
         "id_whitelist": [],
-        "dm_whitelist": [],
+        "dm_tiers": {},
         "id_whitelist_log": True,
         "wl_ignore_admin_on_group": True,
-        "wl_ignore_admin_on_friend": True,
         "reply_with_mention": False,
         "reply_with_quote": False,
         "path_mapping": [],
@@ -1074,19 +1073,16 @@ CONFIG_METADATA_2 = {
                         "items": {"type": "string"},
                         "hint": "仅限制群聊；列表为空不限制群聊。使用 /sid 获取群会话 ID，也可填写群 ID。",
                     },
-                    "dm_whitelist": {
-                        "type": "list",
-                        "items": {"type": "string"},
-                        "hint": "独立私聊白名单，不受群聊白名单开关影响。填写完整 FriendMessage 会话 ID；空列表拒绝普通私聊，管理员豁免按配置执行。可用 /dmwl 管理。",
+                    "dm_tiers": {
+                        "type": "dict",
+                        "items": {},
+                        "hint": "完整 FriendMessage 会话 ID 到 tier 0–3 的映射；未配置拒绝私聊。可用 /dmwl set 管理，管理员也受限制。",
                     },
                     "id_whitelist_log": {
                         "type": "bool",
                         "hint": "启用后，当一条消息没通过白名单时，会输出 INFO 级别的日志。",
                     },
                     "wl_ignore_admin_on_group": {
-                        "type": "bool",
-                    },
-                    "wl_ignore_admin_on_friend": {
                         "type": "bool",
                     },
                     "reply_with_mention": {
@@ -3942,13 +3938,13 @@ CONFIG_METADATA_3 = {
                         "description": "群聊白名单 ID 列表",
                         "type": "list",
                         "items": {"type": "string"},
-                        "hint": "使用 /sid 获取群会话 ID，也可填写群 ID。空列表不限制群聊；私聊授权请使用独立的私聊白名单。",
+                        "hint": "使用 /sid 获取群会话 ID，也可填写群 ID。空列表不限制群聊；私聊授权请使用独立的 dm_tiers。",
                     },
-                    "platform_settings.dm_whitelist": {
-                        "description": "私聊白名单 ID 列表",
-                        "type": "list",
-                        "items": {"type": "string"},
-                        "hint": "填写完整 FriendMessage 会话 ID。空列表拒绝普通私聊，管理员豁免按配置执行。独立于群聊白名单开关和列表，可用 /dmwl 管理。",
+                    "platform_settings.dm_tiers": {
+                        "description": "私聊 tier",
+                        "type": "dict",
+                        "items": {},
+                        "hint": "完整 FriendMessage 会话 ID → tier 0–3；未配置为 tier0。管理员无豁免；用 /dmwl set 管理。",
                     },
                     "platform_settings.id_whitelist_log": {
                         "description": "输出日志",
@@ -3957,10 +3953,6 @@ CONFIG_METADATA_3 = {
                     },
                     "platform_settings.wl_ignore_admin_on_group": {
                         "description": "管理员群组消息无视 ID 白名单",
-                        "type": "bool",
-                    },
-                    "platform_settings.wl_ignore_admin_on_friend": {
-                        "description": "管理员私聊消息无视 ID 白名单",
                         "type": "bool",
                     },
                 },

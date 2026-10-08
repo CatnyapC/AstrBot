@@ -822,9 +822,9 @@
           "description": "群聊白名单 ID 列表",
           "hint": "使用 /sid 获取群会话 ID，也可填写群 ID。空列表不限制群聊；私聊授权请使用独立的私聊白名单。"
         },
-        "dm_whitelist": {
-          "description": "私聊白名单 ID 列表",
-          "hint": "填写完整 FriendMessage 会话 ID。空列表拒绝普通私聊，管理员豁免按配置执行。独立于群聊白名单开关和列表，可用 /dmwl 管理。"
+        "dm_tiers": {
+          "description": "DM tier",
+          "hint": "FriendMessage session ID → tier 0–3. Missing = tier0. Administrators have no DM exemption."
         },
         "id_whitelist_log": {
           "description": "输出日志",
@@ -832,9 +832,6 @@
         },
         "wl_ignore_admin_on_group": {
           "description": "管理员群组消息无视 ID 白名单"
-        },
-        "wl_ignore_admin_on_friend": {
-          "description": "管理员私聊消息无视 ID 白名单"
         }
       }
     },

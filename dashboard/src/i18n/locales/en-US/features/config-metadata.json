@@ -822,9 +822,9 @@
           "description": "Group Whitelist ID List",
           "hint": "Use /sid for a group session ID, or enter a group ID. An empty list leaves groups unrestricted. DM access uses its own list."
         },
-        "dm_whitelist": {
-          "description": "DM Whitelist ID List",
-          "hint": "Enter full FriendMessage session IDs. An empty list denies ordinary DMs; administrator exemptions follow their setting. Independent of group whitelist settings; manageable through /dmwl."
+        "dm_tiers": {
+          "description": "DM tier",
+          "hint": "FriendMessage session ID → tier 0–3. Missing = tier0. Administrators have no DM exemption."
         },
         "id_whitelist_log": {
           "description": "Output Logs",
@@ -832,9 +832,6 @@
         },
         "wl_ignore_admin_on_group": {
           "description": "Administrator Group Messages Bypass ID Whitelist"
-        },
-        "wl_ignore_admin_on_friend": {
-          "description": "Administrator Private Messages Bypass ID Whitelist"
         }
       }
     },

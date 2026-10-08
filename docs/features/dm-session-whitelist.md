@@ -1,39 +1,29 @@
-# DM Session Whitelist
+# DM Session Tiers
 
-Private messages always require their full
-`platform-instance:FriendMessage:account-id` in the effective configuration's
-`platform_settings.dm_whitelist`. An empty or missing list denies ordinary
-private messages. Bare account IDs, another platform instance's entries, and
-entries in the group whitelist do not authorize a DM.
+Private authorization uses only `platform_settings.dm_tiers`, an exact mapping
+from `platform-instance:FriendMessage:account-id` to integer tier 0–3. Missing,
+invalid, boolean or out-of-range values resolve to tier0 and deny access.
+Administrators do not bypass DM tiers. WebChat retains its core exemption;
+Foxmi Router still requires an explicit tier for private LLM processing.
 
-Group behavior remains controlled by `enable_id_white_list` and `id_whitelist`:
-when enabled, an empty group list permits groups, and group IDs or full group
-session IDs can authorize groups. Disabling that switch permits groups without
-disabling the independent DM gate. DM add/remove operations change neither the
-group switch nor its list, including when the last DM entry is removed.
+Group behavior continues to use `enable_id_white_list`, `id_whitelist` and
+`wl_ignore_admin_on_group`. Disabling group restrictions never grants a DM.
+Core checks read live configuration. The dynamic tier map survives configuration
+integrity checks and reloads; saves remain atomic and publish after disk writes.
 
-Existing exemptions remain explicit: WebChat is exempt, administrators can
-bypass according to `wl_ignore_admin_on_friend` / `wl_ignore_admin_on_group`.
-There is no separate DM gate switch: ordinary DM access requires explicit
-authorization. Removing an administrator from the allowlist
-does not revoke an enabled administrator exemption.
+The respond stage rechecks permission before ordinary sends, after segmented
+waits and during stream consumption. Revocation suppresses pending replies.
+Foxmi's shared direct DM send/archive path checks the destination's live tier too.
 
-The whitelist stage reads the current configuration for every event rather
-than caching a list at initialization. Updating `AstrBotConfig.save_config`
-therefore takes effect without restarting the scheduler. Saves write a
-same-directory temporary file, flush it, replace the destination atomically,
-then update the in-memory configuration. Failed writes leave the previous
-configuration and live permissions intact.
+Thread Router owns rolling message/worker accounting in its existing SQLite
+state DB. Core owns admission and reply revocation; it does not add a second
+quota ledger. Configuration metadata exposes the tier map with the existing dict
+editor. `/dmwl set`, `list` and `usage` use the Router V2 managed pipeline.
 
-The respond stage checks DM permissions again immediately before ordinary
-sends, after segmented-send waits, and while consuming streaming results.
-Revocation suppresses pending pipeline replies; already sent content cannot
-be withdrawn. Direct platform sends that bypass the pipeline are outside
-this gate and must check permission themselves.
+The old `dm_whitelist` and `wl_ignore_admin_on_friend` settings are removed.
+Before loading the new config, use Router's one-time `scripts/migrate_dm_tiers.py`
+on the default/profile JSON files. Explicit old entries become tier1; implicit
+administrator access is not migrated. The script keeps an original-file backup.
 
-Foxmi's optional `/dmwl` command and V2 managed plain tool maintain only
-`dm_whitelist`. No group whitelist setup is required. The WebUI exposes the
-separate group and DM lists under Configuration -> Platform -> Whitelist.
-They do not introduce another access database. See the Thread
-Router plugin's `docs/intent_tools/dm_whitelist_admin_managed_tool.md` for
-administrator usage and the distinction between DM access and memory access.
+See `data/plugins/astrbot_plugin_thread_router/docs/intent_tools/dm_whitelist_admin_managed_tool.md`
+for the limits, worker scope and operational commands.

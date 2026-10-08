@@ -13,19 +13,23 @@ def is_event_whitelisted(event: AstrMessageEvent, settings: dict) -> bool:
     if event.get_platform_name() == "webchat":
         return True
     private = event.get_message_type() == MessageType.FRIEND_MESSAGE
-    if not private and not settings.get("enable_id_white_list", True):
+    if private:
+        from .dm_tier import get_dm_tier
+
+        return get_dm_tier(event.unified_msg_origin, settings) > 0
+    if not settings.get("enable_id_white_list", True):
         return True
-    bypass = "wl_ignore_admin_on_friend" if private else "wl_ignore_admin_on_group"
-    if event.is_admin() and settings.get(bypass, False):
+    if event.is_admin() and settings.get("wl_ignore_admin_on_group", False):
         return True
-    entries = settings.get("dm_whitelist" if private else "id_whitelist", [])
+    entries = settings.get("id_whitelist", [])
     if not isinstance(entries, list):
         return False
     whitelist = {str(value).strip() for value in entries if str(value).strip()}
     if not whitelist:
-        return not private
-    return event.unified_msg_origin in whitelist or (
-        not private and str(event.get_group_id()).strip() in whitelist
+        return True
+    return (
+        event.unified_msg_origin in whitelist
+        or str(event.get_group_id()).strip() in whitelist
     )
 
 

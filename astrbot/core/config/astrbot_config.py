@@ -175,6 +175,12 @@ class AstrBotConfig(dict):
                 # 配置项为 None，使用默认值
                 new_conf[key] = value
                 has_new = True
+            elif (
+                path == "platform_settings"
+                and key == "dm_tiers"
+                and isinstance(conf[key], dict)
+            ):
+                new_conf[key] = conf[key]
             elif isinstance(value, dict):
                 # 递归检查子配置项
                 if not isinstance(conf[key], dict):

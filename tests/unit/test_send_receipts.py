@@ -116,7 +116,7 @@ async def test_segmented_reply_collects_all_receipts_and_resets_each_round(
     stage.config = {
         "platform_settings": {
             "enable_id_white_list": True,
-            "dm_whitelist": [event.unified_msg_origin],
+            "dm_tiers": {event.unified_msg_origin: 1},
         }
     }
     stage.platform_settings = {}

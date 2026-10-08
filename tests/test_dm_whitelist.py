@@ -15,9 +15,8 @@ def setup_gate(entries=(), *, private=True, admin=False):
         "platform_settings": {
             "enable_id_white_list": True,
             "id_whitelist": [] if private else list(entries),
-            "dm_whitelist": list(entries) if private else [],
+            "dm_tiers": dict.fromkeys(entries, 1) if private else {},
             "wl_ignore_admin_on_group": True,
-            "wl_ignore_admin_on_friend": True,
             "id_whitelist_log": False,
         }
     }
@@ -47,7 +46,7 @@ def setup_gate(entries=(), *, private=True, admin=False):
         (True, False, ["other:FriendMessage:42"], True),
         (True, False, ["42"], True),
         (True, False, [" "], True),
-        (True, True, [], False),
+        (True, True, [], True),
         (False, False, [], False),
         (False, False, ["123"], False),
         (False, False, ["onebot:GroupMessage:123"], False),
@@ -64,11 +63,11 @@ def test_gate_reads_live_config_and_retains_explicit_exemptions():
     config, event, stage, stopped = setup_gate()
     config["platform_settings"] = {
         **config["platform_settings"],
-        "dm_whitelist": [event.unified_msg_origin],
+        "dm_tiers": {event.unified_msg_origin: 1},
     }
     asyncio.run(stage.process(event))
     assert not stopped
-    config["platform_settings"]["dm_whitelist"] = []
+    config["platform_settings"]["dm_tiers"] = {}
     asyncio.run(stage.process(event))
     assert stopped
     stopped.clear()
@@ -81,7 +80,7 @@ def test_gate_reads_live_config_and_retains_explicit_exemptions():
     assert not stopped
 
 
-def test_admin_bypass_can_be_disabled():
+def test_admin_bypass_cannot_override_tier0():
     config, event, stage, stopped = setup_gate(admin=True)
     config["platform_settings"]["wl_ignore_admin_on_friend"] = False
     asyncio.run(stage.process(event))
@@ -100,10 +99,10 @@ def test_dm_grants_and_revocation_do_not_change_group_access(enabled, group_entr
     expected_group = not enabled or not group_entries or "123" in group_entries
     assert is_event_whitelisted(group, settings) == expected_group
     assert not is_event_whitelisted(dm, settings)
-    settings["dm_whitelist"] = [dm.unified_msg_origin]
+    settings["dm_tiers"] = {dm.unified_msg_origin: 1}
     assert is_event_whitelisted(dm, settings)
     assert is_event_whitelisted(group, settings) == expected_group
-    settings["dm_whitelist"] = []
+    settings["dm_tiers"] = {}
     assert not is_event_whitelisted(dm, settings)
     assert is_event_whitelisted(group, settings) == expected_group
 
@@ -114,7 +113,7 @@ def test_dm_gate_fails_closed_and_never_uses_group_list(entries):
     settings = config["platform_settings"]
     settings["enable_id_white_list"] = False
     settings["id_whitelist"] = [event.unified_msg_origin]
-    settings["dm_whitelist"] = entries
+    settings["dm_tiers"] = entries
     asyncio.run(stage.process(event))
     assert stopped
 
@@ -124,7 +123,7 @@ def test_atomic_config_failure_preserves_memory_and_disk(tmp_path, monkeypatch):
 
     config = AstrBotConfig(
         str(tmp_path / "config.json"),
-        default_config={"platform_settings": {"dm_whitelist": []}},
+        default_config={"platform_settings": {"dm_tiers": {}}},
     )
     before = copy.deepcopy(dict(config))
     disk = Path(config.config_path).read_bytes()
@@ -136,13 +135,13 @@ def test_atomic_config_failure_preserves_memory_and_disk(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "replace", fail)
     with pytest.raises(OSError):
         config.save_config(
-            {"platform_settings": {"dm_whitelist": ["onebot:FriendMessage:42"]}}
+            {"platform_settings": {"dm_tiers": {"onebot:FriendMessage:42": 1}}}
         )
     assert dict(config) == before and Path(config.config_path).read_bytes() == disk
     assert list(tmp_path.iterdir()) == [Path(config.config_path)]
     monkeypatch.setattr(Path, "replace", replace)
     config.save_config(
-        {"platform_settings": {"dm_whitelist": ["onebot:FriendMessage:42"]}}
+        {"platform_settings": {"dm_tiers": {"onebot:FriendMessage:42": 1}}}
     )
     assert json.loads(Path(config.config_path).read_text(encoding="utf-8-sig")) == dict(
         config
@@ -182,7 +181,7 @@ def test_segmented_reply_rechecks_after_wait(monkeypatch):
         sent.append(chain)
 
     async def revoke(_seconds):
-        config["platform_settings"]["dm_whitelist"] = []
+        config["platform_settings"]["dm_tiers"] = {}
 
     async def interval(_comp):
         return 0
@@ -211,7 +210,7 @@ def test_stream_rechecks_permission_between_chunks():
 
     async def source():
         yield "first"
-        config["platform_settings"]["dm_whitelist"] = []
+        config["platform_settings"]["dm_tiers"] = {}
         yield "private second"
 
     async def send_streaming(stream, _segmenting):
