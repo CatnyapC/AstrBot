@@ -1836,6 +1836,7 @@ CONFIG_METADATA_2 = {
                         "embedding_dimensions": 1024,
                         "timeout": 20,
                         "proxy": "",
+                        "custom_extra_body": {},
                     },
                     "Gemini Embedding": {
                         "id": "gemini_embedding",

@@ -65,6 +65,9 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
     def _embedding_kwargs(self) -> dict:
         """构建嵌入请求的可选参数"""
         kwargs = {}
+        custom_extra_body = self.provider_config.get("custom_extra_body", {})
+        if isinstance(custom_extra_body, dict) and custom_extra_body:
+            kwargs["extra_body"] = custom_extra_body
         if "embedding_dimensions" in self.provider_config:
             try:
                 kwargs["dimensions"] = int(self.provider_config["embedding_dimensions"])
