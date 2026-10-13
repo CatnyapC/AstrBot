@@ -1428,8 +1428,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                             "get_user_profile",
                             "get_impression_profile",
                             "get_avatar_profile",
-                            "get_alias_sources",
-                            "get_evidence_rows",
                         ]
                         forced_subset: list[str] = []
                         if req.func_tool:
