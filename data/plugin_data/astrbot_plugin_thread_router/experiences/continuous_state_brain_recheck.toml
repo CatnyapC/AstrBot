@@ -40,6 +40,7 @@ id = "managed:continuous_state_brain_recheck"
 enabled = true
 summary = "Wait for the continuous state brain when Foxmi is corrected or asked to re-check context"
 cue = "continuous_state_brain_recheck"
+required_any_tags = ["intent:continuous_state_brain_recheck", "intent:visual_answer_audit"]
 route_hint = "continuous_state_brain_wait"
 tool_hints = ["continuous_state_brain_wait"]
 tool_steps = [

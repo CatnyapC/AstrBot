@@ -39,4 +39,4 @@ context_tags = [
 required_tags = [
   "capability:future_task_schedule",
 ]
-negative_tags = []
+negative_tags = ["intent:standalone_reminder"]
