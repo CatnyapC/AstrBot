@@ -1,12 +1,15 @@
 """Tests for CronJobManager."""
 
 from datetime import datetime, timedelta, timezone
+from inspect import CORO_CLOSED, getcoroutinestate
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from astrbot.core.cron.manager import CronJobManager, CronJobSchedulingError
 from astrbot.core.db.po import CronJob
+from astrbot.core.star.star_handler import EventType
 
 
 @pytest.fixture
@@ -523,3 +526,81 @@ class TestGetNextRunTime:
         next_run = cron_manager._get_next_run_time("non-existent")
 
         assert next_run is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("consumed", [False, True])
+async def test_active_wake_dispatches_request_hook_before_reset(
+    cron_manager,
+    mock_context,
+    monkeypatch,
+    consumed,
+):
+    import astrbot.core.astr_main_agent as main_agent
+    import astrbot.core.cron.manager as manager_module
+    from astrbot.core.tools.message_tools import SendMessageToUserTool
+
+    cron_manager.ctx = mock_context
+    mock_context.get_llm_tool_manager().get_builtin_tool.return_value = (
+        SendMessageToUserTool()
+    )
+    order = []
+
+    async def reset():
+        order.append("reset")
+
+    reset_coro = reset()
+
+    async def steps(_limit):
+        order.append("run")
+        yield None
+
+    runner = SimpleNamespace(
+        step_until_done=steps,
+        get_final_llm_resp=lambda: SimpleNamespace(
+            role="assistant", completion_text="done"
+        ),
+    )
+
+    async def build(**kwargs):
+        assert kwargs["apply_reset"] is False
+        return SimpleNamespace(
+            agent_runner=runner,
+            provider_request=kwargs["req"],
+            reset_coro=reset_coro,
+        )
+
+    async def hook(event, kind, req):
+        assert kind == EventType.OnLLMRequestEvent
+        assert event.get_extra("cron_payload")["note"] == "scheduled goal"
+        order.append("hook")
+        req.prompt = "hook-modified goal"
+        if consumed:
+            event.stop_event()
+        return event.is_stopped()
+
+    monkeypatch.setattr(
+        main_agent,
+        "_get_session_conv",
+        AsyncMock(return_value=SimpleNamespace(history="[]")),
+    )
+    monkeypatch.setattr(main_agent, "build_main_agent", build)
+    monkeypatch.setattr(manager_module, "call_event_hook", hook)
+    persist = AsyncMock()
+    monkeypatch.setattr(manager_module, "persist_agent_history", persist)
+    job = CronJob(
+        job_id="wake",
+        name="wake",
+        job_type="active_agent",
+        payload={"session": "default:GroupMessage:g1", "note": "scheduled goal"},
+    )
+    try:
+        await cron_manager._run_active_agent_job(job, datetime.now(timezone.utc))
+        assert getcoroutinestate(reset_coro) == CORO_CLOSED
+        assert order == (["hook"] if consumed else ["hook", "reset", "run"])
+        if consumed:
+            persist.assert_not_awaited()
+        else:
+            assert persist.call_args.kwargs["req"].prompt == "hook-modified goal"
+    finally:
+        reset_coro.close()

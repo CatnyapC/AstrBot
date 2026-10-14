@@ -14,8 +14,10 @@ from astrbot.core.agent.tool import ToolSet
 from astrbot.core.cron.events import CronMessageEvent
 from astrbot.core.db import BaseDatabase
 from astrbot.core.db.po import CronJob
+from astrbot.core.pipeline.context_utils import call_event_hook
 from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.provider.entites import ProviderRequest
+from astrbot.core.star.star_handler import EventType
 from astrbot.core.utils.history_saver import persist_agent_history
 
 if TYPE_CHECKING:
@@ -372,11 +374,23 @@ class CronJobManager:
         )
 
         result = await build_main_agent(
-            event=cron_event, plugin_context=self.ctx, config=config, req=req
+            event=cron_event,
+            plugin_context=self.ctx,
+            config=config,
+            req=req,
+            apply_reset=False,
         )
         if not result:
             logger.error("Failed to build main agent for cron job.")
             return
+
+        req = result.provider_request
+        if await call_event_hook(cron_event, EventType.OnLLMRequestEvent, req):
+            if result.reset_coro:
+                result.reset_coro.close()
+            return
+        if result.reset_coro:
+            await result.reset_coro
 
         runner = result.agent_runner
         async for _ in runner.step_until_done(30):

@@ -136,9 +136,12 @@ For `active_agent` jobs, the manager:
 2. Restores the original conversation by session.
 3. Injects cron metadata into `extras`.
 4. Appends a scheduled-task system prompt.
-5. Builds the main Agent.
-6. Adds `SEND_MESSAGE_TO_USER_TOOL`.
-7. Lets the Agent run until done.
+5. Builds the main Agent with reset deferred and `SEND_MESSAGE_TO_USER_TOOL`.
+6. Dispatches `OnLLMRequestEvent` with the prepared request, as in normal chat.
+   Plugins can consume the wake and execute their own persisted task plan.
+   A consumed event closes the deferred reset and skips the main Agent and
+   its conversation-history summary; the consuming plugin owns execution/audit.
+7. Otherwise resets the Agent with the hook-modified request and runs until done.
 8. Persists an execution summary into conversation history.
 
 Code:
