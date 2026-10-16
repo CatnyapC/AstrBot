@@ -1,6 +1,6 @@
 [group]
 id = "identity_memory_lookup"
-enabled = true
+enabled = false
 
 [[lexical]]
 cue = "identity_memory_lookup"
@@ -21,6 +21,7 @@ id = "managed:identity_memory_archive_external_lookup"
 enabled = true
 summary = "Identity lookup from graph memory, then local archive, then external reference"
 cue = "identity_memory_lookup"
+required_tags = ["topic:identity_query", "capability:local_memory_lookup"]
 route_hint = "identity_memory_lookup"
 tool_hints = [
   "router_memory_query",

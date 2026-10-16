@@ -2,6 +2,8 @@
 
 Inbox manifests send live test messages from the configured humiao sender bot.
 
+One-agent cross-machine submission: [Remote Inbox](docs/testing/remote_inbox.md).
+
 ## Platform Selection
 
 `Basic.platform_type` controls the sender adapter:

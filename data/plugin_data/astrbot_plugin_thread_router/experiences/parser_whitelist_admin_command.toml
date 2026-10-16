@@ -43,6 +43,7 @@ Use the parser command worker to convert natural parser whitelist requests into 
 - If status=needs_user/not_found, ask for the exact target user.
 """
 cue = "parser_whitelist_admin"
+required_tags = ["capability:parser_whitelist_admin"]
 route_hint = "parser_whitelist_admin"
 tool_hints = ["parser_whitelist_admin_command"]
 tool_steps = [

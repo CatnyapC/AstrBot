@@ -14,17 +14,13 @@ Use the Twitter/X shortcut before Browser.
 - If no image media is found, report that instead of sending a screenshot of the timeline.
 """
 cue = "twitter_media_retrieval"
-route_hint = "codex_app_server"
+route_hint = "external_knowledge"
 thinking_level = "pro"
 tool_hints = [
-  "codex_app_server_probe",
-  "codex_browser_task",
-  "router_send_local_media",
+  "continuous_brain_worker_task",
 ]
 tool_steps = [
-  { tool_name = "codex_app_server_probe", args = { timeout_sec = 10, port = 4510 } },
-  { tool_name = "codex_browser_task", args = { goal = "$current_prompt", allow_submit = false, timeout_sec = 900, port = 4510 } },
-  { tool_name = "router_send_local_media", args = { path = "$codex_browser_task.media_path", source_status = "$codex_browser_task.status", send_when = "explicit_media_return" } },
+  { tool_name = "continuous_brain_worker_task", args = { task_kind = "external_media_fetch", timeout_sec = 900 } },
 ]
 task_class = "codex_browser_task"
 policy_action = "fast_agentic"

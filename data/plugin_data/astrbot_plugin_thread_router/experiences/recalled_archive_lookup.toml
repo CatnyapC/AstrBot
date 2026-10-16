@@ -2,24 +2,6 @@
 id = "recalled_archive_lookup"
 enabled = true
 
-[[lexical]]
-cue = "recalled_archive_lookup"
-enabled = true
-patterns = [
-  "撤回",
-  "撤回的",
-  "重新发",
-  "再发一遍",
-  "发言记录",
-]
-regex = []
-adds_tags = [
-  "intent:fact_lookup",
-  "evidence:archive_quote",
-  "capability:archive_timeline_lookup",
-  "intent:recalled_archive_lookup",
-]
-
 [[capsule]]
 id = "managed:recalled_archive_lookup"
 enabled = true
@@ -41,6 +23,9 @@ context_tags = [
   "intent:recalled_archive_lookup",
   "evidence:archive_quote",
   "capability:archive_timeline_lookup",
+]
+required_any_tags = [
+  "intent:recalled_archive_lookup",
 ]
 negative_tags = [
 ]

@@ -1,6 +1,6 @@
 [group]
 id = "profile_impression"
-enabled = true
+enabled = false
 
 [[capsule]]
 id = "seed:profile_impression_enumerated_lookup"

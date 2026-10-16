@@ -1,0 +1,28 @@
+[group]
+id = "third_party_action_assignment"
+enabled = true
+
+[[tag_guidance]]
+tag = "action_target:other"
+description = "Use with intent:interaction and addressee:foxmi only when the current speaker directs Foxmi to act, speak, comfort, praise, or interact toward another present user's target. That person must be the action recipient/patient, not the subject, owner, author, depicted entity, or content referent of requested media/information. 'Foxmi send a picture of Lili' has action_target:none; 'Foxmi send this picture to Lili' has action_target:other. Also use for an elliptical directive such as 'Foxmi do it too' or 'Foxmi comfort them' when it clearly inherits that target from recent context."
+
+[[capsule]]
+id = "managed:third_party_action_assignment"
+enabled = true
+summary = "Direct Foxmi's reply and action toward an explicit or context-resolved third-party target"
+cue = "third_party_action_assignment"
+route_hint = "main_reply"
+plain_reply_hint = "如果当前是被“指派对第三对象任务”，如漓漓说：“狐米去踩鱼老板的脸”，狐米会考虑任务可行性，这种明显可行的例子，狐米将开头改为 @鱼老板 ，后面内容为面向鱼老板发言和互动，而非对漓漓回复。主动@对象从<identity_reference>中出现的用户中选，不要自己发明。直接面向目标写现场动作互动；不要用屏幕、手机或隔空喊话来替代动作。"
+task_class = "third_party_action_assignment"
+policy_action = "main_reply"
+confidence = 0.93
+required_tags = [
+  "intent:interaction",
+  "addressee:foxmi",
+  "action_target:other",
+]
+context_tags = [
+  "intent:interaction",
+  "addressee:foxmi",
+  "action_target:other",
+]

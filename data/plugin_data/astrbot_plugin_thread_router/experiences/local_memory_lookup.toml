@@ -1,6 +1,6 @@
 [group]
 id = "local_memory_lookup"
-enabled = true
+enabled = false
 
 [[capsule]]
 id = "seed:group_memory_fact_lookup"

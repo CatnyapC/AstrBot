@@ -1,6 +1,6 @@
 [group]
 id = "entity_recall"
-enabled = true
+enabled = false
 
 [[capsule]]
 id = "seed:entity_recall_profile_archive_kr"

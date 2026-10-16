@@ -42,7 +42,6 @@ patterns = [
   "哪部作品",
   "哪个游戏",
   "什么梗",
-  "最新",
   "最近",
   "新闻",
   "价格",
@@ -145,7 +144,6 @@ adds_tags = [
 cue = "external_source"
 enabled = true
 patterns = [
-  "最新",
   "最近",
   "新闻",
   "价格",

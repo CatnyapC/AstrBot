@@ -71,6 +71,7 @@ id = "managed:visual_memory_correction"
 enabled = true
 summary = "Correct VisualMemory tags or VisualMemory-to-Entity relation claims"
 cue = "visual_memory_correction"
+required_tags = ["intent:visual_memory_correction"]
 route_hint = "visual_memory_correction"
 tool_hints = [
   "router_visual_media_grounding_query",

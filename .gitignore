@@ -11,6 +11,7 @@ uv.lock
 .idea
 
 # Logs and temporary files
+<MagicMock*
 botpy.log
 logs/
 temp

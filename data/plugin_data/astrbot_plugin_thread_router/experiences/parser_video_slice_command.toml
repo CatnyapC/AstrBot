@@ -40,10 +40,11 @@ Validate and send a parser video slice command only for explicit bounded video c
 - If status=source_ref_required or source_hint_required, ask the user to reply to the target video or specify which recent video.
 """
 cue = "parser_action"
+required_tags = ["topic:video_trimming"]
 route_hint = "parser_slice"
 tool_hints = ["parser_video_slice_command"]
 tool_steps = [
-  { tool_name = "parser_video_slice_command", args = { text = "$current_prompt" } },
+  { tool_name = "parser_video_slice_command", args = {} },
 ]
 task_class = "parser_video_slice_command"
 policy_action = "deterministic"

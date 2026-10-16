@@ -64,14 +64,10 @@ cue = "codex_browser_task"
 route_hint = "codex_app_server"
 thinking_level = "pro"
 tool_hints = [
-  "codex_app_server_probe",
-  "codex_browser_task",
-  "router_send_local_media",
+  "continuous_brain_worker_task",
 ]
 tool_steps = [
-  { tool_name = "codex_app_server_probe", args = { timeout_sec = 10, port = 4510 } },
-  { tool_name = "codex_browser_task", args = { allow_submit = true, timeout_sec = 900, port = 4510 } },
-  { tool_name = "router_send_local_media", args = { path = "$codex_browser_task.media_path", source_status = "$codex_browser_task.status", send_when = "explicit_media_return" } },
+  { tool_name = "continuous_brain_worker_task", args = { task_kind = "codex_browser_task", timeout_sec = 900 } },
 ]
 task_class = "codex_browser_task"
 policy_action = "fast_agentic"
