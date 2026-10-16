@@ -1,6 +1,8 @@
 import enum
 from collections.abc import AsyncGenerator
+from copy import deepcopy
 from dataclasses import dataclass, field
+from time import time
 
 from typing_extensions import deprecated
 
@@ -12,6 +14,13 @@ from astrbot.core.message.components import (
     Json,
     Plain,
 )
+
+
+@dataclass(frozen=True)
+class SentMessageReceipt:
+    raw_ids: tuple[str, ...]
+    chain: tuple[BaseMessageComponent, ...]
+    sent_at: int
 
 
 @dataclass
@@ -29,6 +38,29 @@ class MessageChain:
     use_t2i_: bool | None = None  # None 为跟随用户设置
     type: str | None = None
     """消息链承载的消息的类型。可选，用于让消息平台区分不同业务场景的消息链。"""
+
+    sent_receipts: list[SentMessageReceipt] = field(
+        default_factory=list, init=False, repr=False, compare=False
+    )
+
+    def record_sent(self, raw_ids, components) -> None:
+        """Record one acknowledged platform message, including partial sends."""
+        ids = tuple(dict.fromkeys(str(value) for value in raw_ids if value))
+        self.sent_receipts.append(
+            SentMessageReceipt(
+                raw_ids=ids,
+                chain=deepcopy(tuple(components)),
+                sent_at=int(time()),
+            )
+        )
+
+    def derive(self, chain: list[BaseMessageComponent] | None = None) -> "MessageChain":
+        """Copy this chain's metadata without carrying prior send receipts."""
+        return MessageChain(
+            chain=list(self.chain if chain is None else chain),
+            use_t2i_=self.use_t2i_,
+            type=self.type,
+        )
 
     def message(self, message: str):
         """添加一条文本消息到消息链 `chain` 中。

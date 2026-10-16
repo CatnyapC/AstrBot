@@ -169,6 +169,7 @@ class RespondStage(Stage):
             f"Prepare to send - {event.get_sender_name()}/{event.get_sender_id()}: {event._outline_chain(result.chain)}",
         )
 
+        event.set_extra("_sent_message_receipts", [])
         if result.result_content_type == ResultContentType.STREAMING_RESULT:
             if result.async_stream is None:
                 logger.warning("async_stream 为空，跳过发送。")

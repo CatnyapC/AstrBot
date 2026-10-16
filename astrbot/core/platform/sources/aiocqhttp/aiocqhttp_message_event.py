@@ -64,6 +64,17 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
             ret.append(d)
         return ret
 
+    @staticmethod
+    def _extract_sent_message_ids(result) -> list[str]:
+        """Extract IDs only from acknowledged OneBot responses."""
+        if not isinstance(result, dict):
+            return []
+        data = result.get("data", result)
+        if not isinstance(data, dict):
+            return []
+        raw_id = data.get("message_id")
+        return [str(raw_id)] if isinstance(raw_id, (str, int)) and raw_id else []
+
     @classmethod
     async def _dispatch_send(
         cls,
@@ -72,18 +83,18 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
         is_group: bool,
         session_id: str | None,
         messages: list[dict],
-    ) -> None:
+    ):
         # session_id 必须是纯数字字符串
         session_id_int = (
             int(session_id) if session_id and session_id.isdigit() else None
         )
 
         if is_group and isinstance(session_id_int, int):
-            await bot.send_group_msg(group_id=session_id_int, message=messages)
+            return await bot.send_group_msg(group_id=session_id_int, message=messages)
         elif not is_group and isinstance(session_id_int, int):
-            await bot.send_private_msg(user_id=session_id_int, message=messages)
+            return await bot.send_private_msg(user_id=session_id_int, message=messages)
         elif isinstance(event, Event):  # 最后兜底
-            await bot.send(event=event, message=messages)
+            return await bot.send(event=event, message=messages)
         else:
             raise ValueError(
                 f"无法发送消息：缺少有效的数字 session_id({session_id}) 或 event({event})",
@@ -97,7 +108,7 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
         event: Event | None = None,
         is_group: bool = False,
         session_id: str | None = None,
-    ) -> None:
+    ) -> list[str]:
         """发送消息至 QQ 协议端（aiocqhttp）。
 
         Args:
@@ -108,6 +119,15 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
             session_id (str | None, optional): 会话 ID（群号或 QQ 号
 
         """
+        message_chain.sent_receipts.clear()
+        sent_message_ids: list[str] = []
+        setattr(message_chain, "_onebot_sent_message_ids", sent_message_ids)
+
+        def record_result(result, components):
+            ids = cls._extract_sent_message_ids(result)
+            message_chain.record_sent(ids, components)
+            sent_message_ids.extend(ids)
+
         # 转发消息、文件消息不能和普通消息混在一起发送
         send_one_by_one = any(
             isinstance(seg, Node | Nodes | File) for seg in message_chain.chain
@@ -115,9 +135,12 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
         if not send_one_by_one:
             ret = await cls._parse_onebot_json(message_chain)
             if not ret:
-                return
-            await cls._dispatch_send(bot, event, is_group, session_id, ret)
-            return
+                return sent_message_ids
+            send_result = await cls._dispatch_send(
+                bot, event, is_group, session_id, ret
+            )
+            record_result(send_result, message_chain.chain)
+            return sent_message_ids
         for seg in message_chain.chain:
             if isinstance(seg, Node | Nodes):
                 # 合并转发消息
@@ -129,34 +152,54 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
 
                 if is_group:
                     payload["group_id"] = session_id
-                    await bot.call_action("send_group_forward_msg", **payload)
+                    send_result = await bot.call_action(
+                        "send_group_forward_msg", **payload
+                    )
                 else:
                     payload["user_id"] = session_id
-                    await bot.call_action("send_private_forward_msg", **payload)
+                    send_result = await bot.call_action(
+                        "send_private_forward_msg", **payload
+                    )
+                record_result(send_result, [seg])
             elif isinstance(seg, File):
                 d = await cls._from_segment_to_dict(seg)
-                await cls._dispatch_send(bot, event, is_group, session_id, [d])
+                send_result = await cls._dispatch_send(
+                    bot, event, is_group, session_id, [d]
+                )
+                record_result(send_result, [seg])
             else:
                 messages = await cls._parse_onebot_json(MessageChain([seg]))
                 if not messages:
                     continue
-                await cls._dispatch_send(bot, event, is_group, session_id, messages)
+                send_result = await cls._dispatch_send(
+                    bot, event, is_group, session_id, messages
+                )
+                record_result(send_result, [seg])
                 await asyncio.sleep(0.5)
 
-    async def send(self, message: MessageChain) -> None:
-        """发送消息"""
-        event = getattr(self.message_obj, "raw_message", None)
+        return sent_message_ids
 
+    async def send(self, message: MessageChain) -> None:
+        """Send and retain acknowledged receipts even if a later dispatch fails."""
+        event = getattr(self.message_obj, "raw_message", None)
         is_group = bool(self.get_group_id())
         session_id = self.get_group_id() if is_group else self.get_sender_id()
-
-        await self.send_message(
-            bot=self.bot,
-            message_chain=message,
-            event=event,  # 不强制要求一定是 Event
-            is_group=is_group,
-            session_id=session_id,
-        )
+        try:
+            sent_message_ids = await self.send_message(
+                bot=self.bot,
+                message_chain=message,
+                event=event,
+                is_group=is_group,
+                session_id=session_id,
+            )
+        finally:
+            self.set_extra(
+                "_sent_message_receipts",
+                list(self.get_extra("_sent_message_receipts", []) or [])
+                + list(message.sent_receipts),
+            )
+        if sent_message_ids:
+            self.set_extra("_onebot_sent_message_ids", sent_message_ids)
         await super().send(message)
 
     async def send_streaming(

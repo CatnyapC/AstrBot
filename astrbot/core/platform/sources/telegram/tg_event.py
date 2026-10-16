@@ -6,6 +6,7 @@ from typing import Any, cast
 import telegramify_markdown
 from telegram import ReactionTypeCustomEmoji, ReactionTypeEmoji
 from telegram.constants import ChatAction
+from telegram.error import BadRequest
 from telegram.ext import ExtBot
 
 from astrbot import logger
@@ -19,6 +20,12 @@ from astrbot.api.message_components import (
     Reply,
 )
 from astrbot.api.platform import AstrBotMessage, MessageType, PlatformMetadata
+
+
+def _telegram_message_ids(messages) -> list[str]:
+    return [
+        str(item.message_id) for item in messages if getattr(item, "message_id", None)
+    ]
 
 
 class TelegramPlatformEvent(AstrMessageEvent):
@@ -102,6 +109,38 @@ class TelegramPlatformEvent(AstrMessageEvent):
         return ChatAction.TYPING
 
     @classmethod
+    async def _send_text_chunks(
+        cls,
+        client: ExtBot,
+        text: str,
+        payload: dict[str, Any],
+        receipt_chain: MessageChain | None = None,
+    ) -> list[Any]:
+        """Retain each acknowledged chunk before attempting the next one."""
+        sent_messages = []
+        for chunk in cls._split_message(text):
+            try:
+                md_text = telegramify_markdown.markdownify(
+                    chunk, normalize_whitespace=False
+                )
+                sent = await client.send_message(
+                    text=md_text, parse_mode="MarkdownV2", **cast(Any, payload)
+                )
+            except BadRequest as e:
+                logger.warning(
+                    f"MarkdownV2 send failed: {e}. Using plain text instead."
+                )
+                sent = await client.send_message(text=chunk, **cast(Any, payload))
+            sent_messages.append(sent)
+            if receipt_chain is not None:
+                receipt_chain.record_sent(
+                    _telegram_message_ids([sent]),
+                    [part for part in receipt_chain.chain if isinstance(part, Reply)]
+                    + [Plain(chunk)],
+                )
+        return sent_messages
+
+    @classmethod
     async def _send_media_with_action(
         cls,
         client: ExtBot,
@@ -147,8 +186,10 @@ class TelegramPlatformEvent(AstrMessageEvent):
         client: ExtBot,
         message: MessageChain,
         user_name: str,
-    ) -> None:
+    ) -> list[Any]:
         image_path = None
+        message.sent_receipts.clear()
+        sent_messages = []
 
         has_reply = False
         reply_message_id = None
@@ -171,6 +212,7 @@ class TelegramPlatformEvent(AstrMessageEvent):
         await cls._send_chat_action(client, user_name, action, message_thread_id)
 
         for i in message.chain:
+            sent = None
             payload = {
                 "chat_id": user_name,
             }
@@ -183,41 +225,49 @@ class TelegramPlatformEvent(AstrMessageEvent):
                 if at_user_id and not at_flag:
                     i.text = f"@{at_user_id} {i.text}"
                     at_flag = True
-                chunks = cls._split_message(i.text)
-                for chunk in chunks:
-                    try:
-                        md_text = telegramify_markdown.markdownify(
-                            chunk,
-                            normalize_whitespace=False,
-                        )
-                        await client.send_message(
-                            text=md_text,
-                            parse_mode="MarkdownV2",
-                            **cast(Any, payload),
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"MarkdownV2 send failed: {e}. Using plain text instead.",
-                        )
-                        await client.send_message(text=chunk, **cast(Any, payload))
+                sent_messages.extend(
+                    await cls._send_text_chunks(client, i.text, payload, message)
+                )
             elif isinstance(i, Image):
                 image_path = await i.convert_to_file_path()
-                await client.send_photo(photo=image_path, **cast(Any, payload))
+                sent = await client.send_photo(photo=image_path, **cast(Any, payload))
             elif isinstance(i, File):
                 path = await i.get_file()
                 name = i.name or os.path.basename(path)
-                await client.send_document(
+                sent = await client.send_document(
                     document=path, filename=name, **cast(Any, payload)
                 )
             elif isinstance(i, Record):
                 path = await i.convert_to_file_path()
-                await client.send_voice(voice=path, **cast(Any, payload))
+                sent = await client.send_voice(voice=path, **cast(Any, payload))
+
+            if sent is not None:
+                sent_messages.append(sent)
+                message.record_sent(
+                    _telegram_message_ids([sent]),
+                    [part for part in message.chain if isinstance(part, Reply)] + [i],
+                )
+        return sent_messages
 
     async def send(self, message: MessageChain) -> None:
-        if self.get_message_type() == MessageType.GROUP_MESSAGE:
-            await self.send_with_client(self.client, message, self.message_obj.group_id)
-        else:
-            await self.send_with_client(self.client, message, self.get_sender_id())
+        try:
+            if self.get_message_type() == MessageType.GROUP_MESSAGE:
+                sent_messages = await self.send_with_client(
+                    self.client, message, self.message_obj.group_id
+                )
+            else:
+                sent_messages = await self.send_with_client(
+                    self.client, message, self.get_sender_id()
+                )
+        finally:
+            self.set_extra(
+                "_sent_message_receipts",
+                list(self.get_extra("_sent_message_receipts", []) or [])
+                + list(message.sent_receipts),
+            )
+        self.set_extra(
+            "_telegram_sent_message_ids", _telegram_message_ids(sent_messages)
+        )
         await super().send(message)
 
     async def react(self, emoji: str | None, big: bool = False) -> None:
