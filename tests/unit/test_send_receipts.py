@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from aiocqhttp.exceptions import ActionFailed
 
 from astrbot.api.event import MessageChain
 from astrbot.core.message.components import File, Plain, Reply
@@ -19,6 +20,97 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
     AiocqhttpAdapter,
 )
 from astrbot.core.platform.sources.telegram.tg_event import TelegramPlatformEvent
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error,state",
+    [
+        (
+            ActionFailed(
+                {
+                    "status": "failed",
+                    "retcode": 200,
+                    "wording": "EventChecker Failed: result=4",
+                }
+            ),
+            "failed",
+        ),
+        (
+            ActionFailed(
+                {"status": "failed", "retcode": 200, "wording": "Timeout: sendMsg"}
+            ),
+            "unknown",
+        ),
+        (TimeoutError(), "unknown"),
+    ],
+)
+async def test_onebot_failure_records_actual_outcome_without_resending(error, state):
+    bot = AsyncMock()
+    bot.send_group_msg.side_effect = error
+    chain = MessageChain([Plain("attempted")])
+    with pytest.raises(type(error)):
+        await AiocqhttpMessageEvent.send_message(
+            bot, chain, is_group=True, session_id="42"
+        )
+    assert bot.send_group_msg.await_count == 1
+    receipt = chain.sent_receipts[0]
+    assert receipt.delivery_state == state
+    assert receipt.raw_ids == ()
+    assert receipt.chain[0].text == "attempted"
+    assert receipt.error
+
+
+@pytest.mark.asyncio
+async def test_onebot_conversion_failure_is_known_unsent(monkeypatch):
+    monkeypatch.setattr(
+        AiocqhttpMessageEvent,
+        "_parse_onebot_json",
+        AsyncMock(side_effect=ValueError("invalid image")),
+    )
+    bot = AsyncMock()
+    chain = MessageChain([Plain("attempted")])
+    with pytest.raises(ValueError):
+        await AiocqhttpMessageEvent.send_message(
+            bot, chain, is_group=True, session_id="42"
+        )
+    bot.send_group_msg.assert_not_awaited()
+    assert chain.sent_receipts[0].delivery_state == "failed"
+
+
+@pytest.mark.asyncio
+async def test_failed_main_reply_reaches_after_send_hook(monkeypatch):
+    message = AstrBotMessage()
+    message.type = MessageType.GROUP_MESSAGE
+    message.group_id = "42"
+    message.self_id = "bot"
+    message.sender = MessageMember(user_id="peer", nickname="peer")
+    message.message = []
+    message.raw_message = {}
+    bot = AsyncMock()
+    bot.send_group_msg.side_effect = ActionFailed(
+        {"status": "failed", "retcode": 200, "wording": "rejected"}
+    )
+    event = AiocqhttpMessageEvent(
+        "", message, PlatformMetadata("aiocqhttp", "QQ", "qq"), "42", bot
+    )
+    event.set_result(event.plain_result("未送达正文"))
+    stage = RespondStage()
+    stage.config = {}
+    stage.platform_settings = {}
+    monkeypatch.setattr(stage, "is_seg_reply_required", lambda event: False)
+    received = []
+
+    async def hook(event, kind):
+        received.extend(event.get_extra("_sent_message_receipts", []))
+        return False
+
+    monkeypatch.setitem(RespondStage.process.__globals__, "call_event_hook", hook)
+    await stage.process(event)
+    assert len(received) == 1
+    assert received[0].delivery_state == "failed"
+    assert received[0].chain[0].text == "未送达正文"
+    bot.send_group_msg.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -56,12 +148,16 @@ async def test_onebot_partial_send_and_reuse_clear_stale_receipts(monkeypatch):
     with pytest.raises(RuntimeError, match="second failed"):
         await AiocqhttpMessageEvent.send_message(bot, chain, session_id="42")
     assert chain._onebot_sent_message_ids == ["1"]
-    assert len(chain.sent_receipts) == 1
+    assert len(chain.sent_receipts) == 2
     assert chain.sent_receipts[0].chain[0].text == "first"
+    assert chain.sent_receipts[1].delivery_state == "unknown"
+    assert chain.sent_receipts[1].chain[0].name == "file"
     bot.send_private_msg.side_effect = RuntimeError("first failed")
     with pytest.raises(RuntimeError, match="first failed"):
         await AiocqhttpMessageEvent.send_message(bot, chain, session_id="42")
-    assert chain.sent_receipts == []
+    assert len(chain.sent_receipts) == 1
+    assert chain.sent_receipts[0].raw_ids == ()
+    assert chain.sent_receipts[0].error == "first failed"
     assert chain._onebot_sent_message_ids == []
 
 

@@ -21,6 +21,8 @@ class SentMessageReceipt:
     raw_ids: tuple[str, ...]
     chain: tuple[BaseMessageComponent, ...]
     sent_at: int
+    delivery_state: str = "confirmed"
+    error: str = ""
 
 
 @dataclass
@@ -46,16 +48,33 @@ class MessageChain:
         default_factory=list, init=False, repr=False, compare=False
     )
 
-    def record_sent(self, raw_ids, components) -> None:
-        """Record one acknowledged platform message, including partial sends."""
+    def record_sent(
+        self, raw_ids, components, *, delivery_state="confirmed", error=""
+    ) -> None:
+        """Record one platform send outcome, including partial and failed sends."""
         ids = tuple(dict.fromkeys(str(value) for value in raw_ids if value))
         self.sent_receipts.append(
             SentMessageReceipt(
                 raw_ids=ids,
                 chain=deepcopy(tuple(components)),
                 sent_at=int(time()),
+                delivery_state=delivery_state
+                if ids
+                else ("unknown" if delivery_state == "confirmed" else delivery_state),
+                error=error,
             )
         )
+
+    def record_send_error(self, error, components, *, dispatched=True) -> None:
+        response = getattr(error, "result", None)
+        detail = str(error) or type(error).__name__
+        rejected = isinstance(response, dict) and response.get("status") == "failed"
+        state = (
+            "failed"
+            if not dispatched or (rejected and "timeout" not in detail.lower())
+            else "unknown"
+        )
+        self.record_sent([], components, delivery_state=state, error=detail[:240])
 
     def derive(self, chain: list[BaseMessageComponent] | None = None) -> "MessageChain":
         """基于当前消息链创建一个新的 MessageChain，继承元数据（use_t2i_、use_markdown_ 等）。

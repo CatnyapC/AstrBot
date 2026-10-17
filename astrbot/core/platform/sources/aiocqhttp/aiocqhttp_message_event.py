@@ -155,54 +155,45 @@ class AiocqhttpMessageEvent(AstrMessageEvent):
             message_chain.record_sent(ids, components)
             sent_message_ids.extend(ids)
 
-        # 转发消息、文件消息不能和普通消息混在一起发送
+        async def send_part(components):
+            dispatched = False
+            try:
+                if len(components) == 1 and isinstance(components[0], Node | Nodes):
+                    segment = components[0]
+                    nodes = Nodes([segment]) if isinstance(segment, Node) else segment
+                    payload = await nodes.to_dict()
+                    payload["group_id" if is_group else "user_id"] = session_id
+                    dispatched = True
+                    result = await bot.call_action(
+                        "send_group_forward_msg"
+                        if is_group
+                        else "send_private_forward_msg",
+                        **payload,
+                    )
+                else:
+                    messages = await cls._parse_onebot_json(MessageChain(components))
+                    if not messages:
+                        return
+                    dispatched = True
+                    result = await cls._dispatch_send(
+                        bot, event, is_group, session_id, messages
+                    )
+            except Exception as exc:
+                message_chain.record_send_error(exc, components, dispatched=dispatched)
+                raise
+            record_result(result, components)
+
+        # Forward and file segments require separate platform messages.
         send_one_by_one = any(
             isinstance(seg, Node | Nodes | File) for seg in message_chain.chain
         )
         if not send_one_by_one:
-            ret = await cls._parse_onebot_json(message_chain)
-            if not ret:
-                return []
-            send_result = await cls._dispatch_send(
-                bot, event, is_group, session_id, ret
-            )
-            record_result(send_result, message_chain.chain)
-            return sent_message_ids
-        for seg in message_chain.chain:
-            if isinstance(seg, Node | Nodes):
-                # 合并转发消息
-                if isinstance(seg, Node):
-                    nodes = Nodes([seg])
-                    seg = nodes
-
-                payload = await seg.to_dict()
-
-                if is_group:
-                    payload["group_id"] = session_id
-                    send_result = await bot.call_action(
-                        "send_group_forward_msg", **payload
-                    )
-                else:
-                    payload["user_id"] = session_id
-                    send_result = await bot.call_action(
-                        "send_private_forward_msg", **payload
-                    )
-                record_result(send_result, [seg])
-            elif isinstance(seg, File):
-                d = await cls._from_segment_to_dict(seg)
-                send_result = await cls._dispatch_send(
-                    bot, event, is_group, session_id, [d]
-                )
-                record_result(send_result, [seg])
-            else:
-                messages = await cls._parse_onebot_json(MessageChain([seg]))
-                if not messages:
-                    continue
-                send_result = await cls._dispatch_send(
-                    bot, event, is_group, session_id, messages
-                )
-                record_result(send_result, [seg])
-                await asyncio.sleep(0.5)
+            await send_part(message_chain.chain)
+        else:
+            for segment in message_chain.chain:
+                await send_part([segment])
+                if not isinstance(segment, Node | Nodes | File):
+                    await asyncio.sleep(0.5)
         return sent_message_ids
 
     async def send(self, message: MessageChain) -> None:
