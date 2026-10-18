@@ -1252,6 +1252,76 @@ async def test_apply_provider_specific_extra_body_overrides_keeps_non_llama_cpp_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("override", [False, True])
+async def test_request_extra_body_overrides_provider_defaults(
+    monkeypatch, stream, override
+):
+    defaults = {"reasoning": {"effort": "low"}, "provider": {"order": ["test"]}}
+    provider = _make_provider({"custom_extra_body": defaults})
+    captured = {}
+
+    async def chunks():
+        yield ChatCompletionChunk.model_validate(
+            {
+                "id": "test",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": "test",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"role": "assistant", "content": "ok"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            }
+        )
+
+    async def create(**kwargs):
+        captured.update(kwargs)
+        if stream:
+            return chunks()
+        return ChatCompletion.model_validate(
+            {
+                "id": "test",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "test",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "ok"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr(provider.client.chat.completions, "create", create)
+    payload = {"model": "test", "messages": [{"role": "user", "content": "hello"}]}
+    if override:
+        payload["reasoning"] = {"enabled": False, "effort": "none"}
+    try:
+        if stream:
+            async for _ in provider._query_stream(payload, None):
+                pass
+        else:
+            await provider._query(payload, None)
+            await provider._query(payload, None)
+        assert captured["extra_body"] == {
+            **defaults,
+            **({"reasoning": {"enabled": False, "effort": "none"}} if override else {}),
+        }
+        assert provider.provider_config["custom_extra_body"] == defaults
+        assert defaults["reasoning"] == {"effort": "low"}
+        if override:
+            assert payload["reasoning"] == {"enabled": False, "effort": "none"}
+    finally:
+        await provider.terminate()
+
+
+@pytest.mark.asyncio
 async def test_query_injects_reasoning_effort_none_for_ollama(monkeypatch):
     provider = _make_provider(
         {

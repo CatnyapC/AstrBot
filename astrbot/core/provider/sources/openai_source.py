@@ -588,6 +588,7 @@ class ProviderOpenAIOfficial(Provider):
         payloads["messages"] = cleaned
 
     async def _query(self, payloads: dict, tools: ToolSet | None) -> LLMResponse:
+        payloads = payloads.copy()
         if tools:
             model = payloads.get("model", "").lower()
             omit_empty_param_field = "gemini" in model
@@ -600,6 +601,9 @@ class ProviderOpenAIOfficial(Provider):
 
         # 不在默认参数中的参数放在 extra_body 中
         extra_body = {}
+        custom_extra_body = self.provider_config.get("custom_extra_body", {})
+        if isinstance(custom_extra_body, dict):
+            extra_body.update(custom_extra_body)
         to_del = []
         for key in payloads:
             if key not in self.default_params:
@@ -608,10 +612,6 @@ class ProviderOpenAIOfficial(Provider):
         for key in to_del:
             del payloads[key]
 
-        # 读取并合并 custom_extra_body 配置
-        custom_extra_body = self.provider_config.get("custom_extra_body", {})
-        if isinstance(custom_extra_body, dict):
-            extra_body.update(custom_extra_body)
         self._apply_provider_specific_extra_body_overrides(extra_body)
 
         model = payloads.get("model", "").lower()
@@ -641,6 +641,7 @@ class ProviderOpenAIOfficial(Provider):
         tools: ToolSet | None,
     ) -> AsyncGenerator[LLMResponse, None]:
         """流式查询API，逐步返回结果"""
+        payloads = payloads.copy()
         if tools:
             model = payloads.get("model", "").lower()
             omit_empty_param_field = "gemini" in model
