@@ -825,7 +825,7 @@
                 },
                 "dm_tiers": {
                     "description": "DM tier",
-                    "hint": "FriendMessage session ID → tier 0–3. Missing = tier0. Administrators have no DM exemption."
+                    "hint": "FriendMessage session ID → tier 0–4. Tier4 is reserved for owner-bound accounts and shares tier3 quotas. Missing = tier0. Administrators have no DM exemption."
                 },
                 "id_whitelist_log": {
                     "description": "Выводить логи",

@@ -1076,7 +1076,7 @@ CONFIG_METADATA_2 = {
                     "dm_tiers": {
                         "type": "dict",
                         "items": {},
-                        "hint": "完整 FriendMessage 会话 ID 到 tier 0–3 的映射；未配置拒绝私聊。可用 /dmwl set 管理，管理员也受限制。",
+                        "hint": "完整 FriendMessage 会话 ID 到 tier 0–4 的映射；tier4 仅限主人绑定账号，配额同 tier3。未配置拒绝私聊；/dmwl set 管理，管理员无豁免。",
                     },
                     "id_whitelist_log": {
                         "type": "bool",
@@ -3945,7 +3945,7 @@ CONFIG_METADATA_3 = {
                         "description": "私聊 tier",
                         "type": "dict",
                         "items": {},
-                        "hint": "完整 FriendMessage 会话 ID → tier 0–3；未配置为 tier0。管理员无豁免；用 /dmwl set 管理。",
+                        "hint": "完整 FriendMessage 会话 ID → tier 0–4；tier4 仅限主人绑定账号，配额同 tier3。未配置为 tier0；管理员无豁免，/dmwl set 管理。",
                     },
                     "platform_settings.id_whitelist_log": {
                         "description": "输出日志",

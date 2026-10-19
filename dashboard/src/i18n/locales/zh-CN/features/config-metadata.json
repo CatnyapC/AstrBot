@@ -824,7 +824,7 @@
         },
         "dm_tiers": {
           "description": "DM tier",
-          "hint": "FriendMessage session ID → tier 0–3. Missing = tier0. Administrators have no DM exemption."
+          "hint": "FriendMessage 会话 ID → tier 0–4；tier4 仅限主人绑定账号，配额同 tier3。未配置为 tier0，管理员无豁免。"
         },
         "id_whitelist_log": {
           "description": "输出日志",

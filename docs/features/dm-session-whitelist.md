@@ -1,10 +1,15 @@
 # DM Session Tiers
 
 Private authorization uses only `platform_settings.dm_tiers`, an exact mapping
-from `platform-instance:FriendMessage:account-id` to integer tier 0–3. Missing,
+from `platform-instance:FriendMessage:account-id` to integer tier 0–4. Missing,
 invalid, boolean or out-of-range values resolve to tier0 and deny access.
 Administrators do not bypass DM tiers. WebChat retains its core exemption;
 Foxmi Router still requires an explicit tier for private LLM processing.
+
+Tier4 has tier3 quotas. Router reserves tier4 assignment for identities exactly
+bound to the unique Entity identified by QQ `1306962652`. Core tier admission
+alone grants no album access: Router rechecks the authenticated current DM,
+explicit tier4 and current unified Identity binding at album boundaries.
 
 Group behavior continues to use `enable_id_white_list`, `id_whitelist` and
 `wl_ignore_admin_on_group`. Disabling group restrictions never grants a DM.
