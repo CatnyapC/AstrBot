@@ -17,3 +17,4 @@ Use this folder for feature-level documentation.
 - `openrouter-embedding-routing.md`: custom embedding request bodies and ordered Qwen provider fallback.
 - `thread-archive-media-caption-providers.md`: thread archive caption provider selection for image, video, and record media.
 - `webui-config-metadata-i18n.md`: why WebUI config metadata shows `[MISSING: features.config-metadata...]` and how to fix/rebuild served dashboard assets.
+- `sqlite-workloads.md`: shared SQLite leases, workload reservations and Dashboard worker scheduling.
