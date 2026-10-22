@@ -47,8 +47,10 @@ and lane reservations without database paths or SQL. Core `runtime_telemetry`
 observes admission wait and actual lease return, including acquire failure.
 Persistent store leases remain active until `close()`. ContextVar owner/run/stage
 propagates through existing copied thread contexts. A bounded 512-event ring and
-process UUID allow authenticated consumers to detect gaps/restarts. The collector
-is observational; it does not change scheduling, transactions or policy.
+process UUID allow authenticated consumers to detect gaps/restarts. A separate
+512-entry resource-free phase ring shares the same sequence cursor; resource
+traffic cannot evict reply receipts. `phase_truncated` tracks only phase loss.
+The collector is observational; it does not change scheduling, transactions or policy.
 
 Provider implementations observe actual text/stream invocation lifetimes; the
 composer runner supplies its anonymous owner/run context. Cancellation and

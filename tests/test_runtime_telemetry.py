@@ -214,3 +214,27 @@ async def test_stream_failure_and_cancellation_restore_context_and_release(cance
     assert not any(
         item["id"] == observation_id for item in telemetry.snapshot()["active"]
     )
+
+
+def test_phase_receipts_survive_resource_traffic_and_share_sequence_cursor():
+    cursor = telemetry.snapshot()["sequence"]
+    telemetry.emit("context", "running", owner="reply", run="actual-run")
+    phase_sequence = telemetry.snapshot()["sequence"]
+    for _ in range(600):
+        telemetry.emit("connection", "done", resource="sqlite", owner="unknown")
+    snapshot = telemetry.snapshot(cursor)
+    assert not any(event.get("run") == "actual-run" for event in snapshot["events"])
+    assert any(event["seq"] == phase_sequence for event in snapshot["phase_events"])
+    assert snapshot["phase_truncated"] is False
+    assert telemetry.snapshot(snapshot["sequence"])["phase_events"] == []
+
+
+def test_phase_gap_tracks_evicted_receipts_not_resource_sequence_gaps():
+    cursor = telemetry.snapshot()["sequence"]
+    for _ in range(513):
+        telemetry.emit("perception", "done", owner="reply")
+    snapshot = telemetry.snapshot(cursor)
+    assert len(snapshot["phase_events"]) == 512
+    assert snapshot["phase_truncated"] is True
+    evicted = snapshot["phase_events"][0]["seq"] - 1
+    assert telemetry.snapshot(evicted)["phase_truncated"] is False

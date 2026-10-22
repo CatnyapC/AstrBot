@@ -14,6 +14,8 @@ _context = ContextVar("runtime_observation", default={})
 _lock = threading.RLock()
 _active = {}
 _events = deque(maxlen=512)
+_phase_events = deque(maxlen=512)
+_phase_dropped_through = 0
 _sequence = 0
 _INSTANCE = uuid.uuid4().hex
 
@@ -23,7 +25,7 @@ def current():
 
 
 def emit(stage, status, *, run="", owner="", **fields):
-    global _sequence
+    global _sequence, _phase_dropped_through
     with _lock:
         _sequence += 1
         event = {"seq": _sequence, "ts": time.time(), "stage": stage, "status": status}
@@ -31,6 +33,10 @@ def emit(stage, status, *, run="", owner="", **fields):
             {k: v for k, v in {"run": run, "owner": owner, **fields}.items() if v != ""}
         )
         _events.append(event)
+        if not fields.get("resource"):
+            if len(_phase_events) == _phase_events.maxlen:
+                _phase_dropped_through = _phase_events[0]["seq"]
+            _phase_events.append(event)
 
 
 def begin(resource="", *, owner="", stage="", run="", state="running", provider=""):
@@ -181,5 +187,9 @@ def snapshot(after=0):
                 for item in _active.values()
             ],
             "events": [dict(item) for item in _events if item["seq"] > after],
+            "phase_events": [
+                dict(item) for item in _phase_events if item["seq"] > after
+            ],
+            "phase_truncated": bool(after and after < _phase_dropped_through),
             "truncated": bool(_events and after and after < _events[0]["seq"] - 1),
         }
