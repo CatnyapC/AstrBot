@@ -7,7 +7,7 @@ import threading
 import time
 import uuid
 from collections import deque
-from contextlib import aclosing, contextmanager, nullcontext
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 
 _context = ContextVar("runtime_observation", default={})
@@ -80,9 +80,8 @@ def finish(observation, status="done"):
 
 
 @contextmanager
-def span(resource="", *, owner="", stage="", run="", provider=""):
+def _lifetime(resource="", *, owner="", stage="", run="", provider=""):
     observation = begin(resource, owner=owner, stage=stage, run=run, provider=provider)
-    token = _context.set(observation)
     status = "done"
     try:
         yield observation
@@ -94,18 +93,35 @@ def span(resource="", *, owner="", stage="", run="", provider=""):
         )
         raise
     finally:
-        _context.reset(token)
         finish(observation, status)
+
+
+@contextmanager
+def _bind(observation):
+    token = _context.set(observation)
+    try:
+        yield
+    finally:
+        _context.reset(token)
+
+
+@contextmanager
+def span(resource="", *, owner="", stage="", run="", provider=""):
+    with _lifetime(
+        resource, owner=owner, stage=stage, run=run, provider=provider
+    ) as observation:
+        with _bind(observation):
+            yield observation
 
 
 def observe(*, resource="", owner="", stage="", provider=None, run=None):
     """Observe real invocation lifetime, including cancellation and generator close."""
 
     def decorate(function):
-        def scope(args, kwargs):
+        def scope(args, kwargs, *, bind=True):
             if resource == "llm" and current().get("resource") == resource:
-                return nullcontext()
-            return span(
+                return nullcontext(current())
+            return (span if bind else _lifetime)(
                 resource,
                 owner=owner(*args, **kwargs) if callable(owner) else owner,
                 stage=stage,
@@ -117,10 +133,20 @@ def observe(*, resource="", owner="", stage="", provider=None, run=None):
 
             @functools.wraps(function)
             async def call(*args, **kwargs):
-                with scope(args, kwargs):
-                    async with aclosing(function(*args, **kwargs)) as iterator:
-                        async for item in iterator:
+                with scope(args, kwargs, bind=False) as observation:
+                    iterator = function(*args, **kwargs)
+                    try:
+                        while True:
+                            # A consumer or finalizer may resume in another Context.
+                            with _bind(observation):
+                                try:
+                                    item = await anext(iterator)
+                                except StopAsyncIteration:
+                                    break
                             yield item
+                    finally:
+                        with _bind(observation):
+                            await iterator.aclose()
         elif inspect.iscoroutinefunction(function):
 
             @functools.wraps(function)

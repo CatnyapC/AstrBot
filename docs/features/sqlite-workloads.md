@@ -52,7 +52,11 @@ is observational; it does not change scheduling, transactions or policy.
 
 Provider implementations observe actual text/stream invocation lifetimes; the
 composer runner supplies its anonymous owner/run context. Cancellation and
-generator close release observations. Prompts, completions and credentials are
-never captured. Telemetry does not measure remote admission or subprocess
-internals. `uv run pytest tests/test_runtime_telemetry.py tests/test_sqlite_workloads.py`
+generator close release observations. Async streams retain one lifecycle record,
+but bind owner/run context only while advancing or closing their underlying
+iterator. The binding is restored before yielding each chunk. A consumer or
+async-generator finalizer can therefore resume/close the stream in another Task
+or Context without leaking ownership or resetting a foreign ContextVar token.
+Prompts, completions and credentials are never captured. Telemetry does not
+measure remote admission or subprocess internals. `uv run pytest tests/test_runtime_telemetry.py tests/test_sqlite_workloads.py`
 checks release, wait failure, context propagation and the event bound.
