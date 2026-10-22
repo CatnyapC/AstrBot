@@ -14,6 +14,8 @@ from pathlib import Path
 from threading import Condition
 from urllib.parse import unquote, urlsplit
 
+from . import runtime_telemetry as telemetry
+
 CONNECTIONS = {"reply": 24, "web": 16, "backfill": 16, "write": 8}
 LANE = ContextVar("database_workload", default="write")
 _SQLITE_LANE = ContextVar("sqlite_workload", default=None)
@@ -109,7 +111,8 @@ def _identity(database, uri):
 class Connection:
     """One exclusive lease; close cursors and roll back before returning it."""
 
-    def __init__(self, conn, key, identity, reusable, persistent):
+    def __init__(self, conn, key, identity, reusable, persistent, observation):
+        self._observation = observation
         self._conn = conn
         self._persistent = persistent
         self._key = key
@@ -171,32 +174,35 @@ class Connection:
         if conn is None:
             return
         self._conn = None
-        reusable = self._reusable and type(conn) is sqlite3.Connection
         try:
-            for cursor in self._cursors:
-                cursor.close()
-            conn.rollback()
-            # Temporary tables and attached databases belong to the original lease.
-            if (
-                conn.execute("SELECT 1 FROM sqlite_temp_master LIMIT 1").fetchone()
-                or len(conn.execute("PRAGMA database_list").fetchall()) > 2
-            ):
+            reusable = self._reusable and type(conn) is sqlite3.Connection
+            try:
+                for cursor in self._cursors:
+                    cursor.close()
+                conn.rollback()
+                # Temporary tables and attached databases belong to the original lease.
+                if (
+                    conn.execute("SELECT 1 FROM sqlite_temp_master LIMIT 1").fetchone()
+                    or len(conn.execute("PRAGMA database_list").fetchall()) > 2
+                ):
+                    reusable = False
+                conn.row_factory = None
+                conn.text_factory = str
+                conn.set_trace_callback(None)
+                conn.set_progress_handler(None, 0)
+                conn.execute("PRAGMA query_only=OFF")
+                conn.execute(f"PRAGMA busy_timeout={int(self._key[3] * 1000)}")
+            except sqlite3.Error:
                 reusable = False
-            conn.row_factory = None
-            conn.text_factory = str
-            conn.set_trace_callback(None)
-            conn.set_progress_handler(None, 0)
-            conn.execute("PRAGMA query_only=OFF")
-            conn.execute(f"PRAGMA busy_timeout={int(self._key[3] * 1000)}")
-        except sqlite3.Error:
-            reusable = False
-        with _condition:
-            _active[self._key[0]] -= 1
-            if reusable:
-                _idle[self._key].append((conn, self._identity))
-            else:
-                conn.close()
-            _condition.notify_all()
+            with _condition:
+                _active[self._key[0]] -= 1
+                if reusable:
+                    _idle[self._key].append((conn, self._identity))
+                else:
+                    conn.close()
+                _condition.notify_all()
+        finally:
+            telemetry.finish(self._observation)
 
 
 def connect(
@@ -214,6 +220,37 @@ def connect(
     name = workload_name or sqlite_lane()
     if name not in CONNECTIONS:
         raise ValueError("database_workload_invalid")
+    observation = telemetry.begin("sqlite", stage="connection", state="waiting")
+    try:
+        return _acquire(
+            database,
+            timeout,
+            uri=uri,
+            check_same_thread=check_same_thread,
+            isolation_level=isolation_level,
+            workload_name=name,
+            acquire_timeout=acquire_timeout,
+            persistent=persistent,
+            observation=observation,
+        )
+    except BaseException:
+        telemetry.finish(observation, "error")
+        raise
+
+
+def _acquire(
+    database,
+    timeout,
+    *,
+    uri,
+    check_same_thread,
+    isolation_level,
+    workload_name,
+    acquire_timeout,
+    persistent,
+    observation,
+):
+    name = workload_name
     raw = str(database)
     key = (name, raw, uri, float(timeout), isolation_level)
     expires = deadline(time.perf_counter() + acquire_timeout)
@@ -251,12 +288,14 @@ def connect(
                 check_same_thread=False,
                 isolation_level=isolation_level,
             )
+        telemetry.transition(observation, "leased")
         return Connection(
             conn,
             key,
             _identity(raw, uri),
             raw != ":memory:" and "mode=memory" not in raw,
             persistent,
+            observation,
         )
     except BaseException:
         with _condition:
@@ -274,3 +313,14 @@ def close_idle():
 
 
 atexit.register(close_idle)
+
+
+def runtime_pool_snapshot():
+    """Public aggregate pool capacity; no database paths or SQL."""
+    with _condition:
+        return {
+            "capacity": sum(CONNECTIONS.values()),
+            "active": sum(_active.values()),
+            "idle": sum(map(len, _idle.values())),
+            "lanes": dict(CONNECTIONS),
+        }

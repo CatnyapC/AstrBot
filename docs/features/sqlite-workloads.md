@@ -38,3 +38,21 @@ No query timeout, permission rule or database policy is relaxed.
 
 Use `uv run pytest -q tests/test_sqlite_workloads.py` from the AstrBot root for
 lease, rollback, isolation, concurrency, reservation and context regressions.
+
+
+## Payload-free runtime observations
+
+`runtime_pool_snapshot()` returns aggregate capacity, active leases, idle handles
+and lane reservations without database paths or SQL. Core `runtime_telemetry`
+observes admission wait and actual lease return, including acquire failure.
+Persistent store leases remain active until `close()`. ContextVar owner/run/stage
+propagates through existing copied thread contexts. A bounded 512-event ring and
+process UUID allow authenticated consumers to detect gaps/restarts. The collector
+is observational; it does not change scheduling, transactions or policy.
+
+Provider implementations observe actual text/stream invocation lifetimes; the
+composer runner supplies its anonymous owner/run context. Cancellation and
+generator close release observations. Prompts, completions and credentials are
+never captured. Telemetry does not measure remote admission or subprocess
+internals. `uv run pytest tests/test_runtime_telemetry.py tests/test_sqlite_workloads.py`
+checks release, wait failure, context propagation and the event bound.

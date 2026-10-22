@@ -50,6 +50,7 @@ from astrbot.core.provider.modalities import (
     sanitize_contexts_by_modalities,
 )
 from astrbot.core.provider.provider import Provider
+from astrbot.core.utils.runtime_telemetry import current, observe
 
 from ..context.compressor import ContextCompressor
 from ..context.config import ContextConfig
@@ -517,6 +518,13 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         )
         return max(0, max_chars - used_chars)
 
+    @observe(
+        owner=lambda *a, **k: current().get("owner") or "reply",
+        stage="composer",
+        run=lambda self, **k: getattr(
+            getattr(self.run_context.context, "event", None), "get_extra", lambda *a: ""
+        )("_runtime_run", ""),
+    )
     async def _iter_llm_responses(
         self, *, include_model: bool = True
     ) -> T.AsyncGenerator[LLMResponse, None]:

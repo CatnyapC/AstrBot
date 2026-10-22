@@ -14,6 +14,7 @@ from astrbot.core.provider.entities import (
 )
 from astrbot.core.provider.register import provider_cls_map
 from astrbot.core.utils.astrbot_path import get_astrbot_path
+from astrbot.core.utils.runtime_telemetry import observe
 
 Providers: TypeAlias = Union[
     "Provider",
@@ -26,6 +27,25 @@ Providers: TypeAlias = Union[
 
 class AbstractProvider(abc.ABC):
     """Provider Abstract Class"""
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        for name in ("text_chat", "text_chat_stream"):
+            function = cls.__dict__.get(name)
+            if function is not None and not getattr(
+                function, "__isabstractmethod__", False
+            ):
+                setattr(
+                    cls,
+                    name,
+                    observe(
+                        resource="llm",
+                        stage="inference",
+                        provider=lambda self, *a, **k: str(
+                            self.provider_config.get("id", "unknown")
+                        ),
+                    )(function),
+                )
 
     def __init__(self, provider_config: dict) -> None:
         super().__init__()
