@@ -18,6 +18,7 @@ from astrbot.api.message_components import (
     Plain,
     Record,
     Reply,
+    Video,
 )
 from astrbot.api.platform import AstrBotMessage, MessageType, PlatformMetadata
 
@@ -41,6 +42,7 @@ class TelegramPlatformEvent(AstrMessageEvent):
 
     # 消息类型到 chat action 的映射，用于优先级判断
     ACTION_BY_TYPE: dict[type, str] = {
+        Video: ChatAction.UPLOAD_VIDEO,
         Record: ChatAction.UPLOAD_VOICE,
         File: ChatAction.UPLOAD_DOCUMENT,
         Image: ChatAction.UPLOAD_PHOTO,
@@ -231,6 +233,15 @@ class TelegramPlatformEvent(AstrMessageEvent):
             elif isinstance(i, Image):
                 image_path = await i.convert_to_file_path()
                 sent = await client.send_photo(photo=image_path, **cast(Any, payload))
+            elif isinstance(i, Video):
+                video_path = await i.convert_to_file_path()
+                logger.info(
+                    f"[Telegram] Sending video: file={os.path.basename(video_path)}"
+                )
+                sent = await client.send_video(video=video_path, **cast(Any, payload))
+                logger.info(
+                    f"[Telegram] Sent video: file={os.path.basename(video_path)}"
+                )
             elif isinstance(i, File):
                 path = await i.get_file()
                 name = i.name or os.path.basename(path)

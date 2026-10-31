@@ -7,6 +7,7 @@ Use this folder for feature-level documentation.
 - `future-task-management.md`: future task / cron feature, execution model, API and WebUI behavior, and current limits.
 - `gemma4-audio-fastapi-service.md`: local macOS FastAPI service for Gemma 4 E4B native audio analysis.
 - `media-component-url-fallback.md`: incoming media components whose `file` only carries a platform filename now fall back to `url` for local download.
+- `parser-whitelist-admin-bypass.md`: parser per-group whitelist behavior and AstrBot admin bypass.
 - `thread-archive-media-caption-providers.md`: thread archive caption provider selection for image, video, and record media.
 
 - `message-send-receipts.md`: acknowledged OneBot and Telegram sends, partial failures, and receipt consumers.
