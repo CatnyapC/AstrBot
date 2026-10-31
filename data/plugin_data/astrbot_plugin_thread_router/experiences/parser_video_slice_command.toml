@@ -30,6 +30,7 @@ adds_tags = [
 
 [[capsule]]
 id = "managed:parser_video_slice_command"
+conversation_kinds = ["group"]
 enabled = true
 summary = "Parser video slice/clip command request"
 answer_contract = """
@@ -60,6 +61,7 @@ negative_tags = []
 
 [[capsule]]
 id = "seed:parser_video_slice_command"
+conversation_kinds = ["group"]
 enabled = true
 summary = "Parser video slice/clip request"
 cue = "parser_action"

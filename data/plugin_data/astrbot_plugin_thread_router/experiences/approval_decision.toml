@@ -4,6 +4,7 @@ enabled = true
 
 [[capsule]]
 id = "seed:approval_decision"
+conversation_kinds = ["group"]
 enabled = true
 summary = "Approve/reject pending approval request"
 cue = "admin_action"

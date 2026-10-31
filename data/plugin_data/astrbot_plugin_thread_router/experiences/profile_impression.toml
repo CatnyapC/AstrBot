@@ -1,30 +1,27 @@
 [group]
 id = "profile_impression"
-enabled = false
+enabled = true
+
+[[tag_guidance]]
+tag = "intent:profile_impression_query"
+description = "The user asks what Foxmi knows or remembers about a particular person/character, or asks to describe/list their traits, characteristics, personality or saved impressions. Includes 说十条黑狐的特征、描述某人的10条印象、讲讲某人有什么特点, even without the word 印象. Excludes generic species facts, image-only descriptions, fictional trait generation and requests to save new memories."
 
 [[capsule]]
-id = "seed:profile_impression_enumerated_lookup"
+id = "managed:profile_impression_lookup"
 enabled = true
-summary = "Enumerated profile impression request; resolve target and fetch enough profile clues"
+conversation_kinds = ["group"]
+summary = "Read saved profile evidence for a named person's traits or impressions"
 cue = "profile_impression_enumerate"
+required_tags = ["intent:profile_impression_query"]
 route_hint = "profile_impression_lookup"
-tool_hints = [
-  "resolve_alias",
-  "get_user_profile",
-]
+tool_hints = ["resolve_alias", "get_user_profile"]
 tool_steps = [
   { tool_name = "resolve_alias", args = { target_surface = "$target" } },
-  { tool_name = "get_user_profile", args = { target_id = "$resolve_alias.target_id", fields = ["species", "facts", "personality", "history"], requested_count = "$requested_count" } },
+  { tool_name = "get_user_profile", args = { target_id = "$resolve_alias.target_id", fields = ["species", "impression"], requested_count = "$requested_count" } },
 ]
-answer_contract = "answer_only"
+tasklet_tools_args_hint = "Infer the subject and requested_count from the current request semantically; no fixed phrasing is required. Use the numeric user ID from identity_reference/target_id_hint directly, skipping resolve_alias. Otherwise resolve only the subject alias, then get_user_profile(target_id=$resolve_alias.target_id). For self use sender ID. Do not confuse bot addressee with subject or guess IDs. Request fields=[species,impression]; requested_count is 1–15 (default 8). For 说十条黑狐的特征 request 10. These are read-only tools; never dispatch a worker."
 task_class = "profile_impression_query"
 policy_action = "main_reply"
+answer_contract = "Describe only returned, relevant profile evidence. Preserve attribution and historical uncertainty. A requested count is a goal, never permission to invent facts or treat incomplete retrieval as the whole memory store."
 reply_length_policy = "relaxed"
-confidence = 0.88
-context_tags = [
-  "intent:profile_impression_query",
-  "intent:impression_query",
-  "capability:entity_profile_lookup",
-  "shape:enumerate",
-]
-negative_tags = []
+confidence = 0.9

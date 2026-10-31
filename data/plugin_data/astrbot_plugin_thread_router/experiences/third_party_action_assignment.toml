@@ -8,6 +8,7 @@ description = "Use with intent:interaction and addressee:foxmi only when the cur
 
 [[capsule]]
 id = "managed:third_party_action_assignment"
+conversation_kinds = ["group"]
 enabled = true
 summary = "Direct Foxmi's reply and action toward an explicit or context-resolved third-party target"
 cue = "third_party_action_assignment"

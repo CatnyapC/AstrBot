@@ -51,21 +51,35 @@ negative_tags = []
 [[capsule]]
 id = "managed:visual_memory_send_media"
 enabled = true
-summary = "Send/forward existing visual memory media"
-tasklet_tools_args_hint = ""
+summary = "Send an exact recalled original image; search with the worker only when no reference was selected"
+conversation_kinds = ["group"]
 cue = "media_send"
-route_hint = "visual_memory_send"
-tool_hints = [
-  "continuous_brain_media_task",
-]
-tool_steps = [
-  { tool_name = "continuous_brain_media_task", args = { text = "$current_prompt", archive_id = "$current_archive_key" } },
-]
+required_any_tags = ["capability:visual_memory_send", "capability:media_retrieval"]
+route_hint = "recalled_media_send"
+tool_hints = ["router_recalled_media_send"]
+tool_steps = [{ tool_name = "router_recalled_media_send", args = {} }]
+fallback_steps = [{ task = "visual_memory_send", tool_name = "continuous_brain_worker_task", args = { text = "$current_prompt", archive_id = "$current_archive_key", task_kind = "vm_media_send" }, when = ["missing_reference"] }]
+tasklet_tools_args_hint = """按“某人会喜欢”选图时，先用 prefetch_steps 调 router_unified_memory_recall，target_hint填目标原称呼，query_text填“喜欢”（不带人名/问句/搜图词）；取得定向证据后再规划搜图。偏好对象的名字不可直接作query/entity/Tag；不借用他人喜好。无可信喜好则填clarification澄清。发图用 router_recalled_media_send。精确召回原图选证据中的archive_ref或visual_ref；新搜/另换/多张图留空引用并提供search_plan，宿主转给搜索fallback。search_plan 只含 query、context、must_tags、must_any（每组OR，组间AND）、nice_tags、optional_tags、poster_alias、entity、min_age_days/max_age_days、clarification。query只放视觉主体词；随机或仅格式/日期浏览设空。词项保留用户原词及完整短语；context简述本轮语义，不翻译、不猜canonical Tag，宿主统一解析；最多3个必选和3个偏好，不发散变体。must保留全部明确视觉要求，复合要求拆成各自完整属性；must_any仅同义表达，禁止用上位词丢掉颜色/数量等条件。nice只排序。仅本轮明确要求“X发过/分享过的图”才填poster_alias，否则严禁规划poster；“X的图/发一张X”是描绘对象，不是发送者。poster_alias不放视觉词或猜ID；entity仅填明确具名的人物/角色/特定实体；物种、颜色、姿势等通用视觉主体放query/标签，entity留空（如雪豹图）。依据本轮共享召回解析指代。年龄只来自明确要求；日历日期或不连续日期不能表达时填clarification，不猜年龄。数量/格式/排序/截图/情色/重发交Jev判断，勿放plan。禁止命令、路径、库、身份、发送目标。"""
 task_class = "visual_memory_send"
 policy_action = "fast_agentic"
 confidence = 0.85
-negative_tags = []
 
+[[capsule]]
+id = "managed:visual_memory_send_private"
+enabled = true
+summary = "Send media through the authorized private worker"
+conversation_kinds = ["dm"]
+cue = "media_send"
+required_any_tags = ["capability:visual_memory_send", "capability:media_retrieval"]
+route_hint = "visual_memory_send"
+tool_hints = ["continuous_brain_worker_task"]
+tool_steps = [{ tool_name = "continuous_brain_worker_task", args = { text = "$current_prompt", archive_id = "$current_archive_key", task_kind = "vm_media_send" } }]
+task_class = "visual_memory_send"
+policy_action = "fast_agentic"
+confidence = 0.85
+
+
+tasklet_tools_args_hint = """按“某人会喜欢”选图时，先用 prefetch_steps 调 router_unified_memory_recall，target_hint填目标原称呼，query_text填“喜欢”（不带人名/问句/搜图词）；取得定向证据后再规划搜图。偏好对象的名字不可直接作query/entity/Tag；不借用他人喜好。无可信喜好则填clarification澄清。用 continuous_brain_worker_task，task_kind=vm_media_send，提供search_plan。search_plan 只含 query、context、must_tags、must_any（每组OR，组间AND）、nice_tags、optional_tags、poster_alias、entity、min_age_days/max_age_days、clarification。query只放视觉主体词；随机或仅格式/日期浏览设空。词项保留用户原词及完整短语；context简述本轮语义，不翻译、不猜canonical Tag，宿主统一解析；最多3个必选和3个偏好，不发散变体。must保留全部明确视觉要求，复合要求拆成各自完整属性；must_any仅同义表达，禁止用上位词丢掉颜色/数量等条件。nice只排序。仅本轮明确要求“X发过/分享过的图”才填poster_alias，否则严禁规划poster；“X的图/发一张X”是描绘对象，不是发送者。poster_alias不放视觉词或猜ID；entity仅填明确具名的人物/角色/特定实体；物种、颜色、姿势等通用视觉主体放query/标签，entity留空（如雪豹图）。依据本轮共享召回解析指代。年龄只来自明确要求；日历日期或不连续日期不能表达时填clarification，不猜年龄。数量/格式/排序/截图/情色/重发交Jev判断，勿放plan。禁止命令、路径、库、身份、发送目标。"""
 [[capsule]]
 id = "managed:visual_memory_correction"
 enabled = true

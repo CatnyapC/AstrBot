@@ -32,6 +32,7 @@ adds_tags = [
 
 [[capsule]]
 id = "managed:parser_whitelist_admin_command"
+conversation_kinds = ["group"]
 enabled = true
 summary = "Parser whitelist management through continuous parser command worker"
 answer_contract = """
@@ -61,6 +62,7 @@ negative_tags = []
 
 [[capsule]]
 id = "seed:parser_whitelist_admin_command"
+conversation_kinds = ["group"]
 enabled = true
 summary = "Parser whitelist management"
 cue = "parser_whitelist_admin"
